@@ -68,10 +68,6 @@ family = "JetBatang NF"
 style = "Italic"
 ```
 
-`style` 에 `SemiBold`, `ExtraBold Italic` 처럼 써도 됩니다. 열여섯 종 모두
-타이포그래픽 가족(nameID 16)이 `JetBatang NF` 하나라, DirectWrite 와 fontconfig 는
-이 이름으로 묶어 보여줍니다.
-
 ## 빌드
 
 `fontTools` 만 있으면 됩니다. 재료는 스크립트가 알아서 받습니다.
