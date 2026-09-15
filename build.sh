@@ -15,7 +15,8 @@ EMBOLDEN_SCALE="${EMBOLDEN_SCALE:-1.0}"
 # 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량
 #
 # RIDIBatang 은 세로획 80 짜리 한 굵기뿐이다. Regular 를 기준으로 삼고,
-# 라틴 세로획 비율만큼 한글을 불린다. Regular 보다 가는 쪽은 불릴 수 없어 0 이다.
+# 라틴 세로획이 Regular 보다 늘어난 만큼 한글 가로 굵기를 불린다(세로는 그 0.4 배).
+# Regular 보다 가는 쪽은 불릴 수 없어 0 이다.
 #   라틴 세로획: Thin 50 / ExtraLight 66 / Light 79 / Regular 90
 #                Medium 99 / SemiBold 108 / Bold 125 / ExtraBold 150
 VARIANTS=(
@@ -27,14 +28,14 @@ VARIANTS=(
   "LightItalic:Light Italic:0"
   "Regular:Regular:0"
   "Italic:Italic:0"
-  "Medium:Medium:8"
-  "MediumItalic:Medium Italic:8"
-  "SemiBold:SemiBold:16"
-  "SemiBoldItalic:SemiBold Italic:16"
-  "Bold:Bold:32"
-  "BoldItalic:Bold Italic:32"
-  "ExtraBold:ExtraBold:52"
-  "ExtraBoldItalic:ExtraBold Italic:52"
+  "Medium:Medium:9"
+  "MediumItalic:Medium Italic:9"
+  "SemiBold:SemiBold:18"
+  "SemiBoldItalic:SemiBold Italic:18"
+  "Bold:Bold:36"
+  "BoldItalic:Bold Italic:36"
+  "ExtraBold:ExtraBold:56"
+  "ExtraBoldItalic:ExtraBold Italic:56"
 )
 
 command -v curl >/dev/null || { echo "curl 이 필요합니다"; exit 1; }

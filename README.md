@@ -90,7 +90,11 @@ NERD_FAMILY=CascadiaCode BASE_PREFIX=CaskaydiaCoveNerdFontMono ./build.sh
 
 RIDIBatang 은 세로획 80 짜리 한 굵기뿐입니다. 굵은 쪽은 한글 외곽선을 여덟 방향으로
 겹쳐 획을 불리고, **Regular 보다 가는 쪽은 한글을 그대로 둡니다.** Thin·ExtraLight·
-Light 는 라틴만 가늘어집니다.
+Light 는 라틴만 가늘어집니다. 불리는 양은 가로 방향(세로획이 굵어짐)이 기준이고, 세로
+방향은 그 0.4 배를 줍니다. 진짜 명조 Bold 는 세로획이 주로 굵어지지만, 가로획을 그대로
+두면 저해상도(1x 모니터 14px)에서 세로획만 진하고 가로획은 흐려 얼룩져 보입니다. 반대로
+`능 동 닙` 처럼 가로획이 겹겹이 쌓이는 글자는 세로로 많이 불리면 속공간부터 메워지므로,
+그 사이인 0.4 배로 맞췄습니다.
 
 | 굵기 | `style` | 파일 | 라틴 세로획 | 한글 세로획 |
 | --- | --- | --- | --- | --- |
@@ -98,10 +102,10 @@ Light 는 라틴만 가늘어집니다.
 | ExtraLight | `ExtraLight` / `ExtraLight Italic` | `JetBatangNF-ExtraLight`, `-ExtraLightItalic` | 66 | 82 |
 | Light | `Light` / `Light Italic` | `JetBatangNF-Light`, `-LightItalic` | 79 | 82 |
 | Regular | `Regular` / `Italic` | `JetBatangNF-Regular`, `-Italic` | 90 | 82 |
-| Medium | `Medium` / `Medium Italic` | `JetBatangNF-Medium`, `-MediumItalic` | 99 | 91 |
+| Medium | `Medium` / `Medium Italic` | `JetBatangNF-Medium`, `-MediumItalic` | 99 | 90 |
 | SemiBold | `SemiBold` / `SemiBold Italic` | `JetBatangNF-SemiBold`, `-SemiBoldItalic` | 108 | 100 |
-| Bold | `Bold` / `Bold Italic` | `JetBatangNF-Bold`, `-BoldItalic` | 125 | 117 |
-| ExtraBold | `ExtraBold` / `ExtraBold Italic` | `JetBatangNF-ExtraBold`, `-ExtraBoldItalic` | 150 | 140 |
+| Bold | `Bold` / `Bold Italic` | `JetBatangNF-Bold`, `-BoldItalic` | 125 | 118 |
+| ExtraBold | `ExtraBold` / `ExtraBold Italic` | `JetBatangNF-ExtraBold`, `-ExtraBoldItalic` | 150 | 138 |
 
 세로획 값은 1000 upem 기준, `한` 의 세로획을 잰 것입니다.
 

@@ -123,7 +123,10 @@ def main():
     ap.add_argument("--embolden", type=float, default=0.0,
                     help="한글 가로 굵기 증가량(base 단위). RIDIBatang 은 한 굵기뿐이라 Bold 는 이걸로 만든다")
     ap.add_argument("--embolden-y", type=float, default=None,
-                    help="한글 세로 굵기 증가량. 생략하면 --embolden 의 0.75 배")
+                    help="한글 세로 굵기 증가량. 생략하면 --embolden 의 0.4 배. "
+                         "명조 Bold 는 세로획이 주로 굵어지지만 가로획을 그대로 두면 저해상도에서 "
+                         "세로획만 진하고 가로획은 흐려 얼룩져 보인다. 가로획이 겹겹이 쌓이는 "
+                         "글자(능·동·닙)의 속공간이 메워지지 않는 선에서 절반 조금 못 되게 준다")
     ap.add_argument("--max-err", type=float, default=0.001,
                     help="곡선 변환 허용오차(em 비율)")
     args = ap.parse_args()
@@ -140,7 +143,7 @@ def main():
     pivot = args.shear_pivot * upem
 
     ex = args.embolden
-    ey = args.embolden_y if args.embolden_y is not None else ex * 0.75
+    ey = args.embolden_y if args.embolden_y is not None else ex * 0.4
     offsets = embolden_ring(ex, ey) if (ex > 0 or ey > 0) else []
 
     shear = 0.0

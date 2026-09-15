@@ -16,7 +16,7 @@ TS, PY, RS, DOCKER = "", "", "", ""
 CHECK, CROSS, WARN, BOLT = "", "", "", ""
 
 WEIGHTS = [("Thin", 0), ("ExtraLight", 0), ("Light", 0), ("Regular", 0),
-           ("Medium", 8), ("SemiBold", 16), ("Bold", 32), ("ExtraBold", 52)]
+           ("Medium", 9), ("SemiBold", 18), ("Bold", 36), ("ExtraBold", 56)]
 
 
 def face(suffix, size):
