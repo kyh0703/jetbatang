@@ -50,6 +50,26 @@ style = "Italic"
 "font": { "face": "JetBatang NF" }
 ```
 
+**Windows** — 저장소를 받아 아래를 실행하면 설치까지 한 번에 됩니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install-windows.ps1
+powershell -ExecutionPolicy Bypass -File install-windows.ps1 -Uninstall
+```
+
+탐색기에서 우클릭 → 설치를 해도 됩니다. 다만 **파일 복사와 레지스트리 등록만
+하는 방식은 쓰지 마세요.** 그렇게 하면 DirectWrite 가 글꼴 가족 목록에는 올리면서
+파일로 연결하지 못해, 그 가족을 쓰려는 프로그램이 `GetFont` 에서
+`DWRITE_E_FILENOTFOUND`(`0x88985003`) 를 받습니다. Alacritty 는 이때 죽습니다.
+
+```
+panicked at dwrote-0.11.5\src\font_family.rs:98:26:
+called `Result::unwrap()` on an `Err` value: -2003283965
+```
+
+`install-windows.ps1` 은 `AddFontResourceW` 를 부르고 `WM_FONTCHANGE` 를 방송해서
+실행 중인 세션도 글꼴을 알아보게 합니다.
+
 **Linux** — `~/.local/share/fonts/` 에 넣고 `fc-cache -fv`
 
 **macOS** — `~/Library/Fonts/` 에 넣기

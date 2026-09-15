@@ -1,0 +1,107 @@
+<#
+.SYNOPSIS
+  JetBatang NF 를 현재 사용자 계정에 설치하거나 제거한다.
+
+.DESCRIPTION
+  파일 복사와 레지스트리 등록만으로는 실행 중인 세션이 글꼴을 인식하지 못한다.
+  DirectWrite 는 가족 목록에는 올리면서 파일로 연결하지 못해, 그 가족을 쓰려는
+  프로그램이 GetFont 에서 DWRITE_E_FILENOTFOUND(0x88985003) 를 받는다.
+  그래서 AddFontResourceW 를 부르고 WM_FONTCHANGE 를 방송한다.
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File install-windows.ps1
+  powershell -ExecutionPolicy Bypass -File install-windows.ps1 -Uninstall
+#>
+[CmdletBinding()]
+param([switch]$Uninstall)
+
+$ErrorActionPreference = 'Stop'
+
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class JetBatangFontApi {
+  [DllImport("gdi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  public static extern int AddFontResourceW(string file);
+  [DllImport("gdi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+  public static extern bool RemoveFontResourceW(string file);
+  [DllImport("user32.dll", CharSet=CharSet.Auto)]
+  public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam,
+                                                 IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+}
+"@
+
+$faces = [ordered]@{
+    'JetBatangNF-Regular.ttf'    = 'JetBatang NF Regular (TrueType)'
+    'JetBatangNF-Bold.ttf'       = 'JetBatang NF Bold (TrueType)'
+    'JetBatangNF-Italic.ttf'     = 'JetBatang NF Italic (TrueType)'
+    'JetBatangNF-BoldItalic.ttf' = 'JetBatang NF Bold Italic (TrueType)'
+}
+$fontDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
+$regKey  = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
+$source  = Join-Path $PSScriptRoot 'fonts'
+
+function Broadcast-FontChange {
+    $result = [IntPtr]::Zero
+    # HWND_BROADCAST(0xffff), WM_FONTCHANGE(0x1D), SMTO_ABORTIFHUNG(2)
+    [void][JetBatangFontApi]::SendMessageTimeout([IntPtr]0xffff, 0x1D, [IntPtr]::Zero,
+                                                 [IntPtr]::Zero, 2, 3000, [ref]$result)
+}
+
+if ($Uninstall) {
+    foreach ($file in $faces.Keys) {
+        $path = Join-Path $fontDir $file
+        if (Test-Path $path) {
+            [void][JetBatangFontApi]::RemoveFontResourceW($path)
+            Remove-Item $path -Force
+        }
+        Remove-ItemProperty -Path $regKey -Name $faces[$file] -ErrorAction SilentlyContinue
+        Write-Host "  제거: $file"
+    }
+    Broadcast-FontChange
+    Write-Host "제거 완료. 프로그램을 다시 시작하세요."
+    return
+}
+
+New-Item -ItemType Directory -Path $fontDir -Force | Out-Null
+foreach ($file in $faces.Keys) {
+    $src = Join-Path $source $file
+    if (-not (Test-Path $src)) { throw "글꼴 파일이 없습니다: $src" }
+    $path = Join-Path $fontDir $file
+
+    # 이미 걸려 있는 판이 같은 파일이면 굳이 건드리지 않는다.
+    $same = (Test-Path $path) -and ((Get-FileHash $src).Hash -eq (Get-FileHash $path).Hash)
+
+    if (-not $same) {
+        if (Test-Path $path) {
+            # GDI 에 매핑된 채로는 덮어쓸 수 없다. 떼어내고 방송한 뒤 지운다.
+            [void][JetBatangFontApi]::RemoveFontResourceW($path)
+            Broadcast-FontChange
+            for ($i = 0; $i -lt 10 -and (Test-Path $path); $i++) {
+                try { Remove-Item $path -Force -ErrorAction Stop }
+                catch { Start-Sleep -Milliseconds 300 }
+            }
+        }
+        if (Test-Path $path) {
+            throw "글꼴 파일이 사용 중입니다. 이 글꼴을 쓰는 프로그램을 모두 닫고 다시 실행하세요: $path"
+        }
+        Copy-Item $src $path -Force
+    }
+
+    $added = [JetBatangFontApi]::AddFontResourceW($path)
+    if ($added -eq 0) { throw "AddFontResourceW 실패: $path" }
+    New-ItemProperty -Path $regKey -Name $faces[$file] -Value $path -PropertyType String -Force | Out-Null
+    Write-Host "  설치: $file"
+}
+Broadcast-FontChange
+
+Add-Type -AssemblyName PresentationCore
+$family = [System.Windows.Media.Fonts]::SystemFontFamilies | Where-Object { $_.Source -eq 'JetBatang NF' }
+if (-not $family) { throw "설치는 됐지만 DirectWrite 가 아직 인식하지 못합니다. 로그오프 후 다시 시도하세요." }
+foreach ($typeface in $family.GetTypefaces()) {
+    $glyphTypeface = $null
+    if (-not $typeface.TryGetGlyphTypeface([ref]$glyphTypeface)) {
+        throw "face 를 열지 못했습니다: $($typeface.Style) $($typeface.Weight)"
+    }
+}
+Write-Host "설치 완료. 터미널을 다시 시작하고 글꼴을 'JetBatang NF' 로 지정하세요."
