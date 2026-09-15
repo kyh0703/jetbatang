@@ -85,19 +85,6 @@ NERD_FAMILY=CascadiaCode BASE_PREFIX=CaskaydiaCoveNerdFontMono ./build.sh
 | `--shear-from-base` | 꺼짐 | base 의 `italicAngle` 만큼 한글도 기울인다 |
 | `--max-err` | `0.001` | 곡선 변환 허용오차(em 비율) |
 
-## 어떻게 만드는가
-
-1. base(Nerd Font)의 `A` advance 를 1칸으로 보고, 한글 칸을 그 2배로 잡는다.
-2. RIDIBatang 에서 **터미널이 2칸으로 세는 구간만** 가져온다 — 한글 완성형·호환 자모,
-   CJK 문장부호, 괄호·원문자, 전각 영숫자, 전각 통화기호. 라틴·그리스·키릴·수학기호·
-   박스드로잉은 base 쪽이 이미 고정폭이라 건드리지 않는다.
-3. RIDIBatang 은 CFF(3차 베지에), Nerd Font 는 glyf(2차)라 `cu2qu` 로 변환한다.
-   두 형식은 외곽선 방향이 반대이므로 `reverse_direction=True` 가 필요하다.
-4. advance 를 1200 으로 고정하고, 원본의 좌우 균형을 보존하도록 advance box 기준으로
-   중앙 정렬한다.
-5. `OS/2` 의 유니코드·코드페이지 범위를 다시 계산해 한글 글꼴로 인식되게 한다.
-6. 원본의 이름·상표 기록은 버리고 새 이름을 쓴다.
-
 ## 알려진 한계
 
 - **Bold 한글은 굵어지지 않습니다.** RIDIBatang 이 한 굵기만 제공합니다.
