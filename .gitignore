@@ -2,3 +2,11 @@ build/
 .venv/
 *.zip
 *.tar.xz
+
+# 16 종 전부는 Releases 로 배포한다. 저장소에는 기본 네 종만 둔다.
+fonts/*
+!fonts/JetBatangNF-Regular.ttf
+!fonts/JetBatangNF-Italic.ttf
+!fonts/JetBatangNF-Bold.ttf
+!fonts/JetBatangNF-BoldItalic.ttf
+__pycache__/

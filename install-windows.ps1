@@ -31,11 +31,24 @@ public class JetBatangFontApi {
 }
 "@
 
+# fonts/ 에 있는 것만 설치한다. 네 종만 받아도, 열여섯 종을 다 받아도 그대로 동작한다.
 $faces = [ordered]@{
-    'JetBatangNF-Regular.ttf'    = 'JetBatang NF Regular (TrueType)'
-    'JetBatangNF-Bold.ttf'       = 'JetBatang NF Bold (TrueType)'
-    'JetBatangNF-Italic.ttf'     = 'JetBatang NF Italic (TrueType)'
-    'JetBatangNF-BoldItalic.ttf' = 'JetBatang NF Bold Italic (TrueType)'
+    'JetBatangNF-Thin.ttf'             = 'JetBatang NF Thin (TrueType)'
+    'JetBatangNF-ThinItalic.ttf'       = 'JetBatang NF Thin Italic (TrueType)'
+    'JetBatangNF-ExtraLight.ttf'       = 'JetBatang NF ExtraLight (TrueType)'
+    'JetBatangNF-ExtraLightItalic.ttf' = 'JetBatang NF ExtraLight Italic (TrueType)'
+    'JetBatangNF-Light.ttf'            = 'JetBatang NF Light (TrueType)'
+    'JetBatangNF-LightItalic.ttf'      = 'JetBatang NF Light Italic (TrueType)'
+    'JetBatangNF-Regular.ttf'          = 'JetBatang NF Regular (TrueType)'
+    'JetBatangNF-Italic.ttf'           = 'JetBatang NF Italic (TrueType)'
+    'JetBatangNF-Medium.ttf'           = 'JetBatang NF Medium (TrueType)'
+    'JetBatangNF-MediumItalic.ttf'     = 'JetBatang NF Medium Italic (TrueType)'
+    'JetBatangNF-SemiBold.ttf'         = 'JetBatang NF SemiBold (TrueType)'
+    'JetBatangNF-SemiBoldItalic.ttf'   = 'JetBatang NF SemiBold Italic (TrueType)'
+    'JetBatangNF-Bold.ttf'             = 'JetBatang NF Bold (TrueType)'
+    'JetBatangNF-BoldItalic.ttf'       = 'JetBatang NF Bold Italic (TrueType)'
+    'JetBatangNF-ExtraBold.ttf'        = 'JetBatang NF ExtraBold (TrueType)'
+    'JetBatangNF-ExtraBoldItalic.ttf'  = 'JetBatang NF ExtraBold Italic (TrueType)'
 }
 $fontDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
 $regKey  = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
@@ -66,7 +79,7 @@ if ($Uninstall) {
 New-Item -ItemType Directory -Path $fontDir -Force | Out-Null
 foreach ($file in $faces.Keys) {
     $src = Join-Path $source $file
-    if (-not (Test-Path $src)) { throw "글꼴 파일이 없습니다: $src" }
+    if (-not (Test-Path $src)) { continue }
     $path = Join-Path $fontDir $file
 
     # 이미 걸려 있는 판이 같은 파일이면 굳이 건드리지 않는다.

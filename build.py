@@ -15,6 +15,9 @@ from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._g_l_y_f import (ARGS_ARE_XY_VALUES,
+                                             OVERLAP_COMPOUND, Glyph,
+                                             GlyphComponent)
 
 # 터미널에서 2칸을 차지하는(East Asian Wide) 구간만 가져온다.
 # 나머지(라틴·그리스·키릴·괄호·수학기호·박스드로잉)는 base 쪽이 이미 고정폭이다.
@@ -26,6 +29,8 @@ WIDE_RANGES = [
     (0xFF01, 0xFF60),   # 전각 영숫자·기호
     (0xFFE0, 0xFFE6),   # 전각 통화기호 ￦
 ]
+# Windows GDI 는 한 가족에 Regular/Italic/Bold/Bold Italic 네 칸만 준다.
+RIBBI = {"Regular", "Italic", "Bold", "Bold Italic"}
 OFL_URL = "https://openfontlicense.org"
 OFL_DESC = "This Font Software is licensed under the SIL Open Font License, Version 1.1."
 
@@ -37,6 +42,47 @@ def sanitize(name):
 
 def is_wide(cp):
     return any(a <= cp <= b for a, b in WIDE_RANGES)
+
+
+def embolden_ring(ex, ey):
+    """굵기를 더할 방향 8 개를 (dx, dy) 목록으로 준다.
+
+    같은 외곽선을 이 방향으로 조금씩 옮겨 겹쳐 놓으면 TrueType 의 nonzero
+    winding 규칙이 합집합으로 칠해준다. 경계 연산(boolean op) 없이 획이 두꺼워진다.
+    """
+    rx, ry = ex / 2.0, ey / 2.0
+    d = math.sqrt(0.5)
+    ring = [(1, 0), (-1, 0), (0, 1), (0, -1),
+            (d, d), (d, -d), (-d, d), (-d, -d)]
+    return sorted({(round(rx * a), round(ry * b)) for a, b in ring})
+
+
+def make_composite(src, offsets):
+    """src 외곽선을 offsets 만큼씩 옮겨 겹쳐 부르는 composite 글리프."""
+    g = Glyph()
+    g.numberOfContours = -1
+    g.components = []
+    for ox, oy in offsets:
+        c = GlyphComponent()
+        c.glyphName = src
+        c.x, c.y = ox, oy
+        c.flags = ARGS_ARE_XY_VALUES
+        g.components.append(c)
+    g.components[0].flags |= OVERLAP_COMPOUND   # 첫 component 에만 세운다
+    return g
+
+
+def legacy_names(family, style):
+    """nameID 1/2 에 넣을 (가족, 스타일). 16 종을 네 칸짜리 규칙에 욱여넣는다.
+
+    RIBBI 바깥 굵기는 가족 이름 쪽에 굵기를 붙여 따로 가족을 만든다.
+    (JetBatang NF SemiBold / Italic) 실제 가족은 nameID 16/17 로만 알린다.
+    """
+    if style in RIBBI:
+        return family, style
+    italic = style.endswith("Italic")
+    weight = style[:-len("Italic")].strip() if italic else style
+    return f"{family} {weight}", ("Italic" if italic else "Regular")
 
 
 def get_name(font, nid):
@@ -57,7 +103,8 @@ def main():
     ap.add_argument("--donor", required=True, help="RIDIBatang.otf")
     ap.add_argument("--out", required=True)
     ap.add_argument("--family", default="JetBatang NF")
-    ap.add_argument("--style", default="Regular")
+    ap.add_argument("--style", default="Regular",
+                    help="타이포그래픽 스타일. 예: Regular, Italic, SemiBold, Bold Italic")
     ap.add_argument("--scale", type=float, default=1.00,
                     help="한글 배율(donor upem 기준). 1.00 = RIDIBatang 원본 크기")
     ap.add_argument("--yshift", type=float, default=60.0,
@@ -66,6 +113,10 @@ def main():
                     help="base 의 italicAngle 만큼 한글도 기울인다(가짜 이탤릭)")
     ap.add_argument("--shear-pivot", type=float, default=0.325,
                     help="기울임 회전축 높이(em 비율). 한글 세로 중앙")
+    ap.add_argument("--embolden", type=float, default=0.0,
+                    help="한글 가로 굵기 증가량(base 단위). RIDIBatang 은 한 굵기뿐이라 Bold 는 이걸로 만든다")
+    ap.add_argument("--embolden-y", type=float, default=None,
+                    help="한글 세로 굵기 증가량. 생략하면 --embolden 의 0.75 배")
     ap.add_argument("--max-err", type=float, default=0.001,
                     help="곡선 변환 허용오차(em 비율)")
     args = ap.parse_args()
@@ -81,13 +132,17 @@ def main():
     max_err = args.max_err * upem
     pivot = args.shear_pivot * upem
 
+    ex = args.embolden
+    ey = args.embolden_y if args.embolden_y is not None else ex * 0.75
+    offsets = embolden_ring(ex, ey) if (ex > 0 or ey > 0) else []
+
     shear = 0.0
     if args.shear_from_base:
         angle = base["post"].italicAngle          # 오른쪽으로 누우면 음수
         shear = math.tan(math.radians(-angle))
 
     print(f"base upem={upem} cell={cell} wide={wide} | donor upem={donor_upem} "
-          f"| scale={scale:.4f} shear={shear:.4f}")
+          f"| scale={scale:.4f} shear={shear:.4f} embolden={ex:g}/{ey:g}")
 
     dcmap = donor.getBestCmap()
     dglyphs = donor.getGlyphSet()
@@ -97,6 +152,12 @@ def main():
     order = list(base.getGlyphOrder())
     taken = set(order)
     added, skipped = {}, 0
+
+    def put(name, glyph):
+        glyf.glyphs[name] = glyph
+        glyph.recalcBounds(glyf)
+        hmtx.metrics[name] = (wide, glyph.xMin if glyph.numberOfContours else 0)
+        order.append(name)
 
     for cp in sorted(c for c in dcmap if is_wide(c)):
         dname = dcmap[cp]
@@ -127,10 +188,14 @@ def main():
         taken.add(gname)
 
         glyph = ttpen.glyph()
-        glyf.glyphs[gname] = glyph
-        glyph.recalcBounds(glyf)
-        hmtx.metrics[gname] = (wide, glyph.xMin if glyph.numberOfContours else 0)
-        order.append(gname)
+        if offsets:
+            # 원본 외곽선은 cmap 에 걸지 않는 글리프로 두고, 그것을 여러 번 겹쳐
+            # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
+            src = gname + ".src"
+            taken.add(src)
+            put(src, glyph)
+            glyph = make_composite(src, offsets)
+        put(gname, glyph)
         added[cp] = gname
 
     print(f"  한글 등 {len(added)}자 추가, {skipped}자 건너뜀")
@@ -159,6 +224,7 @@ def main():
         f"Hangul: {get_name(donor, 0)}",
         "Merged derivative, SIL Open Font License 1.1.",
     ]))
+    fam1, sub2 = legacy_names(args.family, args.style)
     full = f"{args.family} {args.style}"
     ps = (re.sub(r"[^A-Za-z0-9]", "", args.family) + "-"
           + re.sub(r"[^A-Za-z0-9]", "", args.style))
@@ -167,7 +233,7 @@ def main():
     # base 의 Reserved Font Name 과 donor 의 등록상표를 물려받지 않기 위해서다.
     drop = set(range(0, 15)) | {16, 17, 18, 20, 21, 22}
     base["name"].names = [n for n in base["name"].names if n.nameID not in drop]
-    for nid, value in [(0, copyright_), (1, args.family), (2, args.style),
+    for nid, value in [(0, copyright_), (1, fam1), (2, sub2),
                        (3, f"{ps};merged-with-RIDIBatang"), (4, full), (6, ps),
                        (13, OFL_DESC), (14, OFL_URL), (16, args.family), (17, args.style)]:
         set_name(base, nid, value)
