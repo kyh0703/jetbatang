@@ -62,7 +62,7 @@ def weights():
 
 def sizes():
     """실제 터미널 크기. 명조가 몇 px 부터 뭉개지는지 보라고 넣는다."""
-    text = "한글 = 2칸 | 아이콘 1칸  뷁빻읊쫒 abc 0123"
+    text = "한글 2칸 | カタカナ 2칸  뷁빻읊쫒 コーヒー abc 0123"
     rows = [(s, w) for s in (13, 14, 16, 18) for w in ("Regular", "Bold")]
     im, d = canvas(940, 30 + sum(s + 20 for s, _ in rows))
     y = 18
