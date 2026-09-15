@@ -67,10 +67,10 @@ style = "Italic"
 
 ## 빌드
 
-`fontTools` 만 있으면 됩니다. 재료는 스크립트가 알아서 받습니다.
+`fontTools` 와 `skia-pathops` 가 필요합니다. 재료는 스크립트가 알아서 받습니다.
 
 ```sh
-pip install fonttools
+pip install fonttools skia-pathops
 ./build.sh
 ```
 
@@ -89,7 +89,7 @@ NERD_FAMILY=CascadiaCode BASE_PREFIX=CaskaydiaCoveNerdFontMono ./build.sh
 ## 굵기 구성
 
 RIDIBatang 은 세로획 80 짜리 한 굵기뿐입니다. 굵은 쪽은 한글 외곽선을 여덟 방향으로
-겹쳐 획을 불리고, **Regular 보다 가는 쪽은 한글을 그대로 둡니다.** Thin·ExtraLight·
+겹쳐 획을 불린 뒤 하나의 외곽선으로 합치고, **Regular 보다 가는 쪽은 한글을 그대로 둡니다.** Thin·ExtraLight·
 Light 는 라틴만 가늘어집니다. 불리는 양은 가로 방향(세로획이 굵어짐)이 기준이고, 세로
 방향은 그 0.4 배를 줍니다. 진짜 명조 Bold 는 세로획이 주로 굵어지지만, 가로획을 그대로
 두면 저해상도(1x 모니터 14px)에서 세로획만 진하고 가로획은 흐려 얼룩져 보입니다. 반대로

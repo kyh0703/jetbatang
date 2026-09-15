@@ -40,7 +40,7 @@ VARIANTS=(
 
 command -v curl >/dev/null || { echo "curl 이 필요합니다"; exit 1; }
 command -v unzip >/dev/null || { echo "unzip 이 필요합니다"; exit 1; }
-python3 -c "import fontTools" 2>/dev/null || { echo "pip install fonttools 먼저 하세요"; exit 1; }
+python3 -c "import fontTools, pathops" 2>/dev/null || { echo "pip install fonttools skia-pathops 먼저 하세요"; exit 1; }
 
 mkdir -p build fonts
 

@@ -14,6 +14,7 @@ from fontTools.misc.transform import Transform
 from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib.removeOverlaps import removeTTGlyphOverlaps
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import (ARGS_ARE_XY_VALUES,
                                              OVERLAP_COMPOUND, Glyph,
@@ -77,6 +78,24 @@ def make_composite(src, offsets):
         g.components.append(c)
     g.components[0].flags |= OVERLAP_COMPOUND   # 첫 component 에만 세운다
     return g
+
+
+def merge_overlaps(name, glyf, hmtx, font):
+    """겹쳐 부른 composite 를 외곽선 하나로 합친다. 성공하면 True."""
+    comps = glyf[name].components
+    src = comps[0].glyphName
+    offsets = [(c.x, c.y) for c in comps]
+    for dx, dy in [(0, 0), (1, 0), (0, 1), (1, 1), (-1, 0), (0, -1)]:
+        glyf.glyphs[name] = make_composite(
+            src, [(ox + (dx if i % 2 else 0), oy + (dy if i % 3 else 0))
+                  for i, (ox, oy) in enumerate(offsets)])
+        try:
+            if removeTTGlyphOverlaps(name, font.getGlyphSet(), glyf, hmtx, False):
+                return True
+        except Exception:
+            continue
+    glyf.glyphs[name] = make_composite(src, offsets)
+    return False
 
 
 def legacy_names(family, style):
@@ -214,6 +233,29 @@ def main():
         added[cp] = gname
 
     print(f"  한글 등 {len(added)}자 추가, {skipped}자 건너뜀")
+
+    if offsets:
+        # 겹쳐 놓은 composite 를 그대로 두면 macOS CoreText 가 겹친 가장자리마다
+        # 안티앨리어싱을 따로 해서 획이 번져 보인다(FreeType 은 멀쩡하다).
+        # skia-pathops 로 합집합을 구해 외곽선 하나로 만든다. 드물게 꼭짓점이 정확히
+        # 겹쳐 실패하는 글자는 component 를 1 단위 틀어 다시 시도한다.
+        merged, failed = 0, []
+        for cp, name in added.items():
+            if not glyf[name].isComposite() or glyf[name + ".src"].numberOfContours == 0:
+                continue
+            if merge_overlaps(name, glyf, hmtx, base):
+                merged += 1
+            else:
+                failed.append(chr(cp))
+        used = {c.glyphName for n in added.values()
+                if glyf[n].isComposite() for c in glyf[n].components}
+        for name in added.values():
+            src = name + ".src"
+            if src in glyf.glyphs and src not in used:
+                del glyf.glyphs[src]
+                del hmtx.metrics[src]
+                order.remove(src)
+        print(f"  외곽선 합침: {merged}자" + (f", 실패(겹친 채 둠): {' '.join(failed)}" if failed else ""))
 
     base.setGlyphOrder(order)
     glyf.glyphOrder = order
