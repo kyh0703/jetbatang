@@ -77,6 +77,7 @@ if ($Uninstall) {
 }
 
 New-Item -ItemType Directory -Path $fontDir -Force | Out-Null
+$installed = @()
 foreach ($file in $faces.Keys) {
     $src = Join-Path $source $file
     if (-not (Test-Path $src)) { continue }
@@ -104,17 +105,21 @@ foreach ($file in $faces.Keys) {
     $added = [JetBatangFontApi]::AddFontResourceW($path)
     if ($added -eq 0) { throw "AddFontResourceW 실패: $path" }
     New-ItemProperty -Path $regKey -Name $faces[$file] -Value $path -PropertyType String -Force | Out-Null
+    $installed += $path
     Write-Host "  설치: $file"
 }
+if ($installed.Count -eq 0) { throw "설치할 글꼴이 없습니다. fonts/ 를 확인하세요: $source" }
 Broadcast-FontChange
 
 Add-Type -AssemblyName PresentationCore
 $family = [System.Windows.Media.Fonts]::SystemFontFamilies | Where-Object { $_.Source -eq 'JetBatang NF' }
 if (-not $family) { throw "설치는 됐지만 DirectWrite 가 아직 인식하지 못합니다. 로그오프 후 다시 시도하세요." }
-foreach ($typeface in $family.GetTypefaces()) {
-    $glyphTypeface = $null
-    if (-not $typeface.TryGetGlyphTypeface([ref]$glyphTypeface)) {
-        throw "face 를 열지 못했습니다: $($typeface.Style) $($typeface.Weight)"
-    }
+
+# 가족이 들고 있는 typeface 목록으로 확인하면 안 된다. WPF 글꼴 캐시에 예전 등록이
+# 남아 있으면 이미 없는 파일을 가리켜 FileNotFoundException 이 난다. 방금 넣은
+# 파일을 직접 열어 본다.
+foreach ($path in $installed) {
+    try { $null = New-Object System.Windows.Media.GlyphTypeface ([Uri]$path) }
+    catch { throw "face 를 열지 못했습니다: $path`n$($_.Exception.Message)" }
 }
 Write-Host "설치 완료. 터미널을 다시 시작하고 글꼴을 'JetBatang NF' 로 지정하세요."
