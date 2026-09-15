@@ -45,9 +45,6 @@ panicked at dwrote-0.11.5\src\font_family.rs:98:26:
 called `Result::unwrap()` on an `Err` value: -2003283965
 ```
 
-`install-windows.ps1` 은 `AddFontResourceW` 를 부르고 `WM_FONTCHANGE` 를 방송해서
-실행 중인 세션도 글꼴을 알아보게 합니다.
-
 **Linux** — `~/.local/share/fonts/` 에 넣고 `fc-cache -fv`
 
 **macOS** — `~/Library/Fonts/` 에 넣기
@@ -87,27 +84,7 @@ FAMILY="MyBatang NF" ./build.sh      # 글꼴 이름 바꾸기
 NERD_FAMILY=CascadiaCode BASE_PREFIX=CaskaydiaCoveNerdFontMono ./build.sh
 ```
 
-미리보기 이미지는 따로 만듭니다.
-
-```sh
-pip install pillow
-python3 docs/make-preview.py
-```
-
-`build.py` 를 직접 부르면 한 종씩 세밀하게 조절할 수 있습니다.
-
-| 옵션 | 기본값 | 설명 |
-| --- | --- | --- |
-| `--base` | (필수) | 라틴·아이콘을 담당할 Nerd Font Mono ttf |
-| `--donor` | (필수) | `RIDIBatang.otf` |
-| `--family` | `JetBatang NF` | 타이포그래픽 가족 이름 (nameID 16) |
-| `--style` | `Regular` | 타이포그래픽 스타일. `SemiBold`, `Bold Italic` 등 (nameID 17) |
-| `--scale` | `1.00` | 한글 배율. `1.00` 이 RIDIBatang 원본 크기 |
-| `--yshift` | `60` | 한글 세로 이동. 바탕체는 받침이 깊어 라틴보다 낮게 앉는다 |
-| `--shear-from-base` | 꺼짐 | base 의 `italicAngle` 만큼 한글도 기울인다 |
-| `--embolden` | `0` | 한글 가로 굵기 증가량 |
-| `--embolden-y` | `--embolden` × 0.75 | 한글 세로 굵기 증가량 |
-| `--max-err` | `0.001` | 곡선 변환 허용오차(em 비율) |
+한 종씩 세밀하게 조절하려면 `python3 build.py --help` 를 보세요.
 
 ## 굵기 구성
 
@@ -127,10 +104,6 @@ Light 는 라틴만 가늘어집니다.
 | ExtraBold | `ExtraBold` / `ExtraBold Italic` | `JetBatangNF-ExtraBold`, `-ExtraBoldItalic` | 150 | 140 |
 
 세로획 값은 1000 upem 기준, `한` 의 세로획을 잰 것입니다.
-
-GDI 처럼 한 가족에 네 칸만 두는 옛 방식으로 읽는 프로그램에서는 Regular 와 Bold 만
-`JetBatang NF` 에 들어가고, 나머지는 `JetBatang NF SemiBold` + `Regular` 식으로
-굵기마다 따로 잡힙니다.
 
 ## 적용 범위
 
@@ -153,8 +126,6 @@ GDI 처럼 한 가족에 네 칸만 두는 옛 방식으로 읽는 프로그램�
 없으면 `コーヒー` 가 `コ□ヒ□` 로 깨집니다. `build.py` 의 `ALIASES` 에 있습니다.
 
 ## 눈으로 확인하기
-
-다른 글꼴과 비교할 때는 같은 렌더러, 같은 크기, 같은 줄높이로 놓고 보세요.
 
 ```text
 JetBatang NF 테스트 ABC abc 0123456789
