@@ -24,11 +24,18 @@ from fontTools.ttLib.tables._g_l_y_f import (ARGS_ARE_XY_VALUES,
 WIDE_RANGES = [
     (0xAC00, 0xD7A3),   # 한글 완성형
     (0x3130, 0x318F),   # 한글 호환 자모
+    (0x3041, 0x309F),   # 히라가나
+    (0x30A0, 0x30FF),   # 가타카나
     (0x3000, 0x303F),   # CJK 문장부호 。、「」〜
     (0x3200, 0x32FF),   # 괄호문자·원문자 ㈜ ㉠ ㎡
     (0xFF01, 0xFF60),   # 전각 영숫자·기호
     (0xFFE0, 0xFFE6),   # 전각 통화기호 ￦
 ]
+# RIDIBatang 에 없는 글자를 같은 모양의 다른 글자로 때운다.
+# ー(장음부호)는 가로 전폭 막대인데 RIDIBatang 에 없다. ―(horizontal bar) 가
+# 같은 높이·같은 굵기의 막대라 그대로 쓴다. 없으면 コーヒー 가 두부로 깨진다.
+ALIASES = {0x30FC: 0x2015}
+
 # Windows GDI 는 한 가족에 Regular/Italic/Bold/Bold Italic 네 칸만 준다.
 RIBBI = {"Regular", "Italic", "Bold", "Bold Italic"}
 OFL_URL = "https://openfontlicense.org"
@@ -159,8 +166,13 @@ def main():
         hmtx.metrics[name] = (wide, glyph.xMin if glyph.numberOfContours else 0)
         order.append(name)
 
-    for cp in sorted(c for c in dcmap if is_wide(c)):
-        dname = dcmap[cp]
+    targets = {cp: dcmap[cp] for cp in dcmap if is_wide(cp)}
+    for cp, src in ALIASES.items():
+        if cp not in targets and src in dcmap:
+            targets[cp] = dcmap[src]
+
+    for cp in sorted(targets):
+        dname = targets[cp]
         if dname not in dhmtx.metrics:
             skipped += 1
             continue
