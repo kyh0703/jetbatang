@@ -10,11 +10,12 @@ import math
 import re
 import sys
 
+import pathops
+
 from fontTools.misc.transform import Transform
 from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib.removeOverlaps import removeTTGlyphOverlaps
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables._g_l_y_f import (ARGS_ARE_XY_VALUES,
                                              OVERLAP_COMPOUND, Glyph,
@@ -80,22 +81,70 @@ def make_composite(src, offsets):
     return g
 
 
-def merge_overlaps(name, glyf, hmtx, font):
-    """겹쳐 부른 composite 를 외곽선 하나로 합친다. 성공하면 True."""
-    comps = glyf[name].components
-    src = comps[0].glyphName
-    offsets = [(c.x, c.y) for c in comps]
-    for dx, dy in [(0, 0), (1, 0), (0, 1), (1, 1), (-1, 0), (0, -1)]:
-        glyf.glyphs[name] = make_composite(
-            src, [(ox + (dx if i % 2 else 0), oy + (dy if i % 3 else 0))
-                  for i, (ox, oy) in enumerate(offsets)])
+def shifted_copies(glyph, offsets):
+    """외곽선을 offsets 만큼씩 옮긴 복사본을 pathops.Path 로 하나씩 준다."""
+    for ox, oy in offsets:
+        copy = pathops.Path()
+        glyph.draw(copy.getPen(glyphSet=None), None)
+        yield copy.transform(1, 0, 0, 1, ox, oy)
+
+
+def by_simplify(glyph, offsets):
+    stack = pathops.Path()
+    pen = stack.getPen(glyphSet=None)
+    for copy in shifted_copies(glyph, offsets):
+        copy.draw(pen)
+    return pathops.simplify(stack, clockwise=stack.clockwise)
+
+
+def by_opbuilder(glyph, offsets):
+    builder = pathops.OpBuilder(fix_winding=True, keep_starting_points=False)
+    for copy in shifted_copies(glyph, offsets):
+        builder.add(copy, pathops.PathOp.UNION)
+    return builder.resolve()
+
+
+def ink(path):
+    """칠해지는 넓이. 속공간은 방향이 반대라 저절로 빠진다."""
+    return abs(sum(c.area if c.clockwise else -c.area for c in path.contours))
+
+
+def nudge(offsets):
+    """복사본의 x·y 가 서로 겹치지 않게 아주 조금씩 어긋나게 민다.
+
+    (-13, 5) 와 (13, 5) 처럼 y 가 같으면 두 복사본의 가로획이 같은 높이에서
+    collinear 로 만난다. 경계 연산이 가장 자주 틀리는 자리다. 미는 양은 최대
+    0.06 단위, 좌표를 정수로 반올림해 저장하고 나면 남지 않는다.
+    """
+    mid = (len(offsets) - 1) / 2.0
+    return [(ox + (i - mid) * 0.017, oy + (i - mid) * 0.011)
+            for i, (ox, oy) in enumerate(offsets)]
+
+
+def merge_copies(glyph, offsets):
+    """겹쳐 놓은 복사본들을 외곽선 하나로 합친다. 못 믿을 결과면 None.
+
+    skia 의 경계 연산은 이런 입력 — 같은 외곽선을 평행 이동한 복사본들 — 에서
+    가로·세로 직선이 collinear 로 만나면 드물게 예외도 없이 속공간을 먹어 버린다.
+    이탤릭 아·야 의 ㅇ 이 까맣게 메워지던 원인이었고, 조용히 틀리기 때문에 결과만
+    보고는 알 수 없다. 그래서 알고리즘이 다른 두 경로로 구해 칠해지는 넓이가
+    같을 때만 믿는다. 둘이 어긋나면 복사본을 조금 밀어 한 번 더 해 보고,
+    그래도 어긋나면 합치지 않고 겹친 채로 둔다.
+    """
+    for offs in (offsets, nudge(offsets)):
         try:
-            if removeTTGlyphOverlaps(name, font.getGlyphSet(), glyf, hmtx, False):
-                return True
-        except Exception:
+            first, second = by_simplify(glyph, offs), by_opbuilder(glyph, offs)
+        except pathops.PathOpsError:
             continue
-    glyf.glyphs[name] = make_composite(src, offsets)
-    return False
+        a, b = ink(first), ink(second)
+        if not a or abs(a - b) > a * 1e-4:
+            continue
+        ttpen = TTGlyphPen(None)
+        first.draw(ttpen)
+        merged = ttpen.glyph()
+        if merged.numberOfContours:
+            return merged
+    return None
 
 
 def legacy_names(family, style):
@@ -222,7 +271,7 @@ def main():
         taken.add(gname)
 
         glyph = ttpen.glyph()
-        if offsets:
+        if offsets and glyph.numberOfContours:
             # 원본 외곽선은 cmap 에 걸지 않는 글리프로 두고, 그것을 여러 번 겹쳐
             # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
             src = gname + ".src"
@@ -237,16 +286,20 @@ def main():
     if offsets:
         # 겹쳐 놓은 composite 를 그대로 두면 macOS CoreText 가 겹친 가장자리마다
         # 안티앨리어싱을 따로 해서 획이 번져 보인다(FreeType 은 멀쩡하다).
-        # skia-pathops 로 합집합을 구해 외곽선 하나로 만든다. 드물게 꼭짓점이 정확히
-        # 겹쳐 실패하는 글자는 component 를 1 단위 틀어 다시 시도한다.
+        # 그래서 합집합을 구해 외곽선 하나로 만든다. 믿을 수 없는 글자만 겹친 채 둔다.
         merged, failed = 0, []
         for cp, name in added.items():
-            if not glyf[name].isComposite() or glyf[name + ".src"].numberOfContours == 0:
+            if not glyf[name].isComposite():
                 continue
-            if merge_overlaps(name, glyf, hmtx, base):
-                merged += 1
-            else:
+            src = name + ".src"
+            one = merge_copies(glyf[src], offsets)
+            if one is None:
                 failed.append(chr(cp))
+                continue
+            glyf.glyphs[name] = one
+            one.recalcBounds(glyf)
+            hmtx.metrics[name] = (wide, one.xMin)
+            merged += 1
         used = {c.glyphName for n in added.values()
                 if glyf[n].isComposite() for c in glyf[n].components}
         for name in added.values():
@@ -255,7 +308,7 @@ def main():
                 del glyf.glyphs[src]
                 del hmtx.metrics[src]
                 order.remove(src)
-        print(f"  외곽선 합침: {merged}자" + (f", 실패(겹친 채 둠): {' '.join(failed)}" if failed else ""))
+        print(f"  외곽선 합침: {merged}자" + (f", 겹친 채 둠: {' '.join(failed)}" if failed else ""))
 
     base.setGlyphOrder(order)
     glyf.glyphOrder = order
