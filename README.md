@@ -115,6 +115,3 @@ NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./build.sh
 - **JetBrains Mono** — Copyright 2020 The JetBrains Mono Project Authors
 - **Nerd Fonts** — Ryan L McIntyre and contributors
 - **RIDIBatang** — Copyright (c) 2019 RIDI & Sandoll, 산돌 디자인
-
-"JetBrains Mono" 는 JetBrains s.r.o. 의, "RIDIBatang" 은 리디주식회사의 상표예요.
-이 저장소는 두 회사와 아무 관계가 없고, 만들어 내는 글꼴 이름에도 두 상표를 쓰지 않아요.
