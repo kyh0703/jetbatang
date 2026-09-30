@@ -24,7 +24,7 @@ if (상태 === "완료") return "성공";
 ## INSTALL
 
 [Releases](../../releases) 에서 원하는 굵기의 `ttf` 나 `JetBatangNF-all.zip` 을 받으세요.
-저장소 `fonts/` 에도 열여섯 종이 모두 들어 있어요. 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요.
+저장소 `fonts/` 에는 Regular·Italic·Bold·Bold Italic 네 종만 들어 있어요. 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요.
 
 **Windows**
 
