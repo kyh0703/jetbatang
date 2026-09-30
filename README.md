@@ -72,7 +72,8 @@ RIDIBatang 은 세로획 80 짜리 한 굵기밖에 없어요. 그래서 Regular
 | `U+3041`–`U+309F` | 히라가나 |
 | `U+30A0`–`U+30FF` | 가타카나 |
 | `U+3000`–`U+303F` | CJK 문장부호 `。、「」〜` |
-| `U+3200`–`U+32FF` | 괄호문자·원문자 `㈜ ㉠ ㎡` |
+| `U+3200`–`U+32FF` | 괄호문자·원문자 `㈜ ㉠` |
+| `U+3300`–`U+33FF` | CJK 호환 문자 `㎡ ㎏ ㎞` |
 | `U+FF01`–`U+FF60` | 전각 영숫자·기호 |
 | `U+FFE0`–`U+FFE6` | 전각 통화기호 `￦` |
 
@@ -95,7 +96,8 @@ pip install fonttools skia-pathops
 ./build.sh
 ```
 
-결과는 `fonts/JetBatangNF-*.ttf` 열여섯 개예요.
+결과는 `fonts/JetBatangNF-*.ttf` 열여섯 개예요. 빌드한 다음 `python3 -m unittest discover tests` 로
+회귀 검사를 돌릴 수 있어요.
 
 ```sh
 SCALE=1.05 YSHIFT=0 ./build.sh       # 한글을 5% 키우고 원래 높이로
