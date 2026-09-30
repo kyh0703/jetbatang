@@ -13,8 +13,11 @@ import sys
 import pathops
 
 from fontTools.misc.transform import Transform
+from fontTools.pens.areaPen import AreaPen
 from fontTools.pens.basePen import BasePen
+from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.cu2quPen import Cu2QuPen
+from fontTools.pens.recordingPen import RecordingPen, replayRecording
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
@@ -35,10 +38,22 @@ WIDE_RANGES = [
     (0xFF01, 0xFF60),   # 전각 영숫자·기호
     (0xFFE0, 0xFFE6),   # 전각 통화기호 ￦
 ]
-# RIDIBatang 에 없는 글자를 같은 모양의 다른 글자로 때운다.
+# RIDIBatang 에 없거나 잘못 그려진 글자를 같은 모양의 다른 글자로 때운다.
 # ー(장음부호)는 가로 전폭 막대인데 RIDIBatang 에 없다. ―(horizontal bar) 가
 # 같은 높이·같은 굵기의 막대라 그대로 쓴다. 없으면 コーヒー 가 두부로 깨진다.
-ALIASES = {0x30FC: 0x2015}
+# ￦(전각 원 기호)에는 전각 역슬래시 모양이 걸려 있어서 ₩ 모양을 쓴다.
+ALIASES = {0x30FC: 0x2015, 0xFFE6: 0x20A9}
+
+# RIDIBatang 에 없는 탁음 가나 → 탁점을 얹을 청음 가나. ゔ ヷ ヸ ヹ ヺ
+VOICED = {0x3094: 0x3046, 0x30F7: 0x30EF, 0x30F8: 0x30F0, 0x30F9: 0x30F1, 0x30FA: 0x30F2}
+
+# base 가 1칸 폭으로 그렸지만 터미널은 2칸으로 세는 글자. 2칸 가운데로 옮긴다. ⚡ ﹢
+# ☰(U+2630) 도 Unicode 16 부터 2칸이지만, 아직 1칸으로 세는 터미널에서 옆 글자를
+# 덮지 않게 그대로 둔다. 2칸으로 세는 터미널에서는 왼쪽 칸에 그려질 뿐이다.
+WIDEN = [0x26A1, 0xFE62]
+
+# 터미널이 1칸으로 세는데 base 에 없는 글자. RIDIBatang 에서 가져와 1칸에 맞춘다. ₩
+NARROW = [0x20A9]
 
 # Windows GDI 는 한 가족에 Regular/Italic/Bold/Bold Italic 네 칸만 준다.
 RIBBI = {"Regular", "Italic", "Bold", "Bold Italic"}
@@ -79,7 +94,8 @@ def make_composite(src, offsets):
         c.x, c.y = ox, oy
         c.flags = ARGS_ARE_XY_VALUES
         g.components.append(c)
-    g.components[0].flags |= OVERLAP_COMPOUND   # 첫 component 에만 세운다
+    if len(offsets) > 1:
+        g.components[0].flags |= OVERLAP_COMPOUND   # 겹칠 때만, 첫 component 에만 세운다
     return g
 
 
@@ -89,6 +105,85 @@ def outline(dglyph, tf, max_err):
     # CFF 와 glyf 는 외곽선 방향이 반대라 reverse_direction 이 필요하다.
     dglyph.draw(TransformPen(Cu2QuPen(ttpen, max_err, reverse_direction=True), tf))
     return ttpen.glyph()
+
+
+class Voiced:
+    """청음 가나에 ヴ 의 탁점을 얹은 글자. donor 글리프처럼 draw 만 한다."""
+
+    def __init__(self, plain, room, marks):
+        self.plain, self.room, self.marks = plain, room, marks
+
+    def draw(self, pen):
+        self.plain.draw(TransformPen(pen, self.room))
+        for mark in self.marks:
+            replayRecording(mark, pen)
+
+
+def voiced_kana(dglyphs, dcmap, dhmtx):
+    """VOICED 글자를 {cp: (그릴 거리, advance, 이름)} 으로 만든다.
+
+    ヴ 는 ウ 에 탁점 두 획을 얹고, 그 자리를 비우려고 ウ 를 가로로 조금 줄여 왼쪽으로
+    옮긴 글자다. 청음 글자를 ウ 와 같은 만큼 옮기고 ヴ 의 탁점을 그대로 얹는다.
+    ワ 는 ウ 에서 윗점만 뺀 모양이라 ヷ 는 원본 디자인과 거의 같아진다.
+    """
+    rec = RecordingPen()
+    dglyphs[dcmap[0x30F4]].draw(rec)                  # ヴ
+    contours, cur = [], []
+    for op, args in rec.value:
+        cur.append((op, args))
+        if op in ("closePath", "endPath"):
+            contours.append(cur)
+            cur = []
+
+    def area(contour):
+        pen = AreaPen()
+        replayRecording(contour, pen)
+        return abs(pen.value)
+
+    body = max(contours, key=area)                    # ウ. 나머지 둘이 탁점이다
+    marks = [c for c in contours if c is not body]
+    plain, moved = BoundsPen(None), BoundsPen(None)
+    dglyphs[dcmap[0x30A6]].draw(plain)                # ウ
+    replayRecording(body, moved)
+    (x0, _, x1, _), (v0, _, v1, _) = plain.bounds, moved.bounds
+    a = (v1 - v0) / (x1 - x0)
+    room = Transform(a, 0, 0, 1, v0 - a * x0, 0)
+    return {cp: (Voiced(dglyphs[dcmap[src]], room, marks), dhmtx[dcmap[src]][0], f"uni{cp:04X}")
+            for cp, src in VOICED.items() if cp not in dcmap and src in dcmap}
+
+
+def fit_cell(dglyphs, dcmap, bglyphs, bcmap, shear, ex):
+    """NARROW 글자를 base 1칸에 놓는 변환을 {cp: 변환} 으로 준다.
+
+    기울이고 굵기를 불린 뒤의 가로 범위가 같은 굵기·기울기의 base W 와 같게 하고,
+    세로는 대문자 H 높이를 base 에 맞춘다. RIDIBatang ₩ 은 폭이 815 라 Regular 에서
+    가로를 0.69 배로 줄인다. 한글처럼 올려 앉히지 않는다.
+    """
+    def bounds(glyphs, name, tf=None):
+        pen = BoundsPen(glyphs)
+        glyphs[name].draw(TransformPen(pen, tf) if tf else pen)
+        return pen.bounds
+
+    sy = bounds(bglyphs, bcmap[ord("H")])[3] / bounds(dglyphs, dcmap[ord("H")])[3]
+    wx0, _, wx1, _ = bounds(bglyphs, bcmap[ord("W")])
+    left, width = wx0 + ex / 2, wx1 - wx0 - ex        # 굵기를 불릴 몫을 뺀 자리
+
+    def span(name, sx):
+        x0, _, x1, _ = bounds(dglyphs, name, Transform(sx, 0, shear * sy, sy, 0, 0))
+        return x0, x1 - x0
+
+    fits = {}
+    for cp in NARROW:
+        if cp not in dcmap or cp in bcmap:
+            continue
+        name = dcmap[cp]
+        # 기울인 뒤의 폭은 sx 에 대해 일차라 두 점으로 푼다.
+        _, w1 = span(name, 1.0)
+        _, w2 = span(name, 0.5)
+        sx = 0.5 + (width - w2) * 0.5 / (w1 - w2)
+        x0, _ = span(name, sx)
+        fits[cp] = Transform(sx, 0, shear * sy, sy, left - x0, 0)
+    return fits
 
 
 def shifted_copies(glyph, offsets):
@@ -363,32 +458,38 @@ def main():
     glyf, hmtx = base["glyf"], base["hmtx"]
     order = list(base.getGlyphOrder())
     taken = set(order)
-    added, skipped = {}, 0
+    added = {}
 
-    def put(name, glyph):
+    def put(name, glyph, advance=wide):
         glyf.glyphs[name] = glyph
         glyph.recalcBounds(glyf)
-        hmtx.metrics[name] = (wide, glyph.xMin if glyph.numberOfContours else 0)
+        hmtx.metrics[name] = (advance, glyph.xMin if glyph.numberOfContours else 0)
         order.append(name)
 
-    targets = {cp: dcmap[cp] for cp in dcmap if is_wide(cp)}
-    for cp, src in ALIASES.items():
-        if cp not in targets and src in dcmap:
-            targets[cp] = dcmap[src]
-
-    for cp in sorted(targets):
-        dname = targets[cp]
-        if dname not in dhmtx.metrics:
-            skipped += 1
-            continue
-
-        # advance box 기준 중앙 정렬 — 원본의 좌우 균형을 그대로 보존한다.
-        dx = (wide - dhmtx[dname][0] * scale) / 2.0
+    def centered(advance):
+        """donor advance box 를 한글 2칸 가운데에 놓는다. 원본의 좌우 균형을 그대로 보존한다."""
+        dx = (wide - advance * scale) / 2.0
         # yx 항이 기울임. pivot 높이를 축으로 돌려 글자가 칸 밖으로 밀리지 않게 한다.
-        tf = Transform(scale, 0, shear * scale, scale, dx - shear * pivot, args.yshift)
+        return Transform(scale, 0, shear * scale, scale, dx - shear * pivot, args.yshift)
+
+    targets = {cp: dcmap[cp] for cp in dcmap if is_wide(cp)}
+    targets.update({cp: dcmap[src] for cp, src in ALIASES.items() if src in dcmap})
+
+    # cp → (그릴 거리, 변환, 폭, 이름)
+    sources = {cp: (dglyphs[name], centered(dhmtx[name][0]), wide, name)
+               for cp, name in targets.items() if name in dhmtx.metrics}
+    skipped = len(targets) - len(sources)
+    for cp, (drawing, advance, name) in voiced_kana(dglyphs, dcmap, dhmtx).items():
+        sources[cp] = (drawing, centered(advance), wide, name)
+    bcmap = base.getBestCmap()
+    for cp, tf in fit_cell(dglyphs, dcmap, base.getGlyphSet(), bcmap, shear, ex).items():
+        sources[cp] = (dglyphs[dcmap[cp]], tf, cell, dcmap[cp])
+
+    for cp in sorted(sources):
+        drawing, tf, advance, dname = sources[cp]
 
         try:
-            glyph = outline(dglyphs[dname], tf, max_err)
+            glyph = outline(drawing, tf, max_err)
         except Exception as exc:
             print(f"  skip U+{cp:04X} {dname}: {exc}", file=sys.stderr)
             skipped += 1
@@ -406,9 +507,9 @@ def main():
             # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
             src = gname + ".src"
             taken.add(src)
-            put(src, glyph)
+            put(src, glyph, advance)
             glyph = make_composite(src, offsets)
-        put(gname, glyph)
+        put(gname, glyph, advance)
         added[cp] = gname
 
     print(f"  한글 등 {len(added)}자 추가, {skipped}자 건너뜀")
@@ -428,7 +529,7 @@ def main():
                 continue
             glyf.glyphs[name] = one
             one.recalcBounds(glyf)
-            hmtx.metrics[name] = (wide, one.xMin)
+            hmtx.metrics[name] = (hmtx[name][0], one.xMin)
             merged += 1
         used = {c.glyphName for n in added.values()
                 if glyf[n].isComposite() for c in glyf[n].components}
@@ -439,6 +540,16 @@ def main():
                 del hmtx.metrics[src]
                 order.remove(src)
         print(f"  외곽선 합침: {merged}자" + (f", 겹친 채 둠: {' '.join(failed)}" if failed else ""))
+
+    # 터미널이 2칸으로 세는 base 글자를 2칸 가운데로 옮겨 부른다. 원래 글리프는 그대로 둔다.
+    for cp in WIDEN:
+        if cp not in bcmap:
+            continue
+        src = bcmap[cp]
+        gname = src + ".wide"
+        taken.add(gname)
+        put(gname, make_composite(src, [((wide - hmtx[src][0]) // 2, 0)]))
+        added[cp] = gname
 
     base.setGlyphOrder(order)
     glyf.glyphOrder = order
