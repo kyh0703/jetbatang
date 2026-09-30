@@ -13,6 +13,7 @@ import sys
 import pathops
 
 from fontTools.misc.transform import Transform
+from fontTools.pens.basePen import BasePen
 from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
@@ -82,6 +83,14 @@ def make_composite(src, offsets):
     return g
 
 
+def outline(dglyph, tf, max_err):
+    """donor 의 CFF 글리프를 tf 로 옮긴 TrueType 글리프로 만든다."""
+    ttpen = TTGlyphPen(None)
+    # CFF 와 glyf 는 외곽선 방향이 반대라 reverse_direction 이 필요하다.
+    dglyph.draw(TransformPen(Cu2QuPen(ttpen, max_err, reverse_direction=True), tf))
+    return ttpen.glyph()
+
+
 def shifted_copies(glyph, offsets):
     """외곽선을 offsets 만큼씩 옮긴 복사본을 pathops.Path 로 하나씩 준다."""
     for ox, oy in offsets:
@@ -90,11 +99,17 @@ def shifted_copies(glyph, offsets):
         yield copy.transform(1, 0, 0, 1, ox, oy)
 
 
-def by_simplify(glyph, offsets):
+def stacked(glyph, offsets):
+    """복사본을 합치지 않고 한 경로에 겹쳐 담는다. composite 가 칠하는 모양 그대로다."""
     stack = pathops.Path()
     pen = stack.getPen(glyphSet=None)
     for copy in shifted_copies(glyph, offsets):
         copy.draw(pen)
+    return stack
+
+
+def by_simplify(glyph, offsets):
+    stack = stacked(glyph, offsets)
     return pathops.simplify(stack, clockwise=stack.clockwise)
 
 
@@ -122,6 +137,122 @@ def nudge(offsets):
             for i, (ox, oy) in enumerate(offsets)]
 
 
+def unions(glyph, offsets):
+    """알고리즘이 다른 두 경계 연산으로 구한 합집합. 예외를 낸 쪽은 뺀다."""
+    paths = []
+    for union in (by_simplify, by_opbuilder):
+        try:
+            paths.append(union(glyph, offsets))
+        except pathops.PathOpsError:
+            pass
+    return paths
+
+
+def agreed(paths):
+    """두 합집합이 모두 있고 칠해지는 넓이가 같으면 그 하나, 아니면 None."""
+    if len(paths) < 2:
+        return None
+    a, b = ink(paths[0]), ink(paths[1])
+    if not a or abs(a - b) > a * 1e-4:
+        return None
+    return paths[0]
+
+
+# 합친 외곽선과 겹친 복사본이 칠하는 영역이 칠해진 넓이 대비 이만큼 넘게 어긋나면 틀린 것이다.
+# 곡선을 꺾은선으로 펴며 생기는 차이는 5e-5 안쪽이고, 속공간을 먹은 결과는 5e-4 넘게 어긋난다.
+COVER_TOL = 2e-4
+
+
+class EdgePen(BasePen):
+    """외곽선을 꺾은선으로 펴서 (x0, y0, x1, y1) 선분으로 모은다."""
+    STEPS = 32
+
+    def __init__(self):
+        super().__init__(None)
+        self.edges = []
+        self.start = self.cur = None
+
+    def _moveTo(self, pt):
+        self.start = self.cur = pt
+
+    def _lineTo(self, pt):
+        self.edges.append((*self.cur, *pt))
+        self.cur = pt
+
+    def _curveToOne(self, p1, p2, p3):
+        x0, y0 = self.cur
+        for i in range(1, self.STEPS + 1):
+            t = i / self.STEPS
+            u = 1 - t
+            a, b, c, d = u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t
+            self._lineTo((a * x0 + b * p1[0] + c * p2[0] + d * p3[0],
+                          a * y0 + b * p1[1] + c * p2[1] + d * p3[1]))
+
+    def _closePath(self):
+        if self.cur != self.start:
+            self._lineTo(self.start)
+
+    _endPath = _closePath
+
+
+def coverage(path):
+    """nonzero 규칙으로 칠해지는 가로 구간을 높이 1 마다 구한다. {줄: [(x0, x1), ...]}
+
+    TrueType 이 겹친 composite 를 칠하는 규칙 그대로라, 경계 연산을 거치지 않은 정답이 된다.
+    """
+    pen = EdgePen()
+    path.draw(pen)
+    hits = {}
+    for x0, y0, x1, y1 in pen.edges:
+        if y0 == y1:
+            continue
+        wind = 1 if y1 > y0 else -1
+        slope = (x1 - x0) / (y1 - y0)
+        # 줄 r 은 높이 r + 0.5 에서 잰다. 선분의 아래 끝은 넣고 위 끝은 뺀다.
+        for r in range(math.ceil(min(y0, y1) - 0.5), math.ceil(max(y0, y1) - 0.5)):
+            hits.setdefault(r, []).append((x0 + (r + 0.5 - y0) * slope, wind))
+    rows = {}
+    for r, xs in hits.items():
+        xs.sort()
+        spans, winding, start = [], 0, 0.0
+        for x, wind in xs:
+            if winding == 0:
+                start = x
+            winding += wind
+            if winding == 0:
+                spans.append((start, x))
+        rows[r] = spans
+    return rows
+
+
+def painted(rows):
+    return sum(x1 - x0 for spans in rows.values() for x0, x1 in spans)
+
+
+def mismatch(a, b):
+    """두 coverage 가운데 한쪽만 칠하는 넓이."""
+    both = 0.0
+    for r in a.keys() & b.keys():
+        p, q, i, j = a[r], b[r], 0, 0
+        while i < len(p) and j < len(q):
+            both += max(0.0, min(p[i][1], q[j][1]) - max(p[i][0], q[j][0]))
+            if p[i][1] < q[j][1]:
+                i += 1
+            else:
+                j += 1
+    return painted(a) + painted(b) - 2 * both
+
+
+def painted_like_stack(glyph, offsets, paths):
+    """겹친 복사본을 직접 칠해 보고, 그와 같게 칠해지는 합집합을 고른다. 없으면 None."""
+    truth = coverage(stacked(glyph, offsets))
+    limit = painted(truth) * COVER_TOL
+    for path in paths:
+        if mismatch(truth, coverage(path)) <= limit:
+            return path
+    return None
+
+
 def merge_copies(glyph, offsets):
     """겹쳐 놓은 복사본들을 외곽선 하나로 합친다. 못 믿을 결과면 None.
 
@@ -129,23 +260,25 @@ def merge_copies(glyph, offsets):
     가로·세로 직선이 collinear 로 만나면 드물게 예외도 없이 속공간을 먹어 버린다.
     이탤릭 아·야 의 ㅇ 이 까맣게 메워지던 원인이었고, 조용히 틀리기 때문에 결과만
     보고는 알 수 없다. 그래서 알고리즘이 다른 두 경로로 구해 칠해지는 넓이가
-    같을 때만 믿는다. 둘이 어긋나면 복사본을 조금 밀어 한 번 더 해 보고,
-    그래도 어긋나면 합치지 않고 겹친 채로 둔다.
+    같을 때만 믿는다. 둘이 어긋나면 복사본을 조금 밀어 한 번 더 해 본다.
+
+    그래도 어긋나면 겹친 복사본을 nonzero 규칙으로 직접 칠해 보고, 처음 구한 두
+    합집합 가운데 그와 같게 칠해지는 쪽을 쓴다. 느려서 마지막에만 한다. 복사본을
+    한 쌍씩 합치는 세 번째 경계 연산은 OpBuilder 와 같이 틀려서(Bold 휑,
+    ExtraBold Italic ｓ) 다수결에 쓸 수 없다. 맞는 쪽이 없으면 겹친 채로 둔다.
     """
-    for offs in (offsets, nudge(offsets)):
-        try:
-            first, second = by_simplify(glyph, offs), by_opbuilder(glyph, offs)
-        except pathops.PathOpsError:
-            continue
-        a, b = ink(first), ink(second)
-        if not a or abs(a - b) > a * 1e-4:
-            continue
-        ttpen = TTGlyphPen(None)
-        first.draw(ttpen)
-        merged = ttpen.glyph()
-        if merged.numberOfContours:
-            return merged
-    return None
+    first = unions(glyph, offsets)
+    picked = agreed(first)
+    if picked is None:
+        picked = agreed(unions(glyph, nudge(offsets)))
+    if picked is None:
+        picked = painted_like_stack(glyph, offsets, first)
+    if picked is None:
+        return None
+    ttpen = TTGlyphPen(None)
+    picked.draw(ttpen)
+    merged = ttpen.glyph()
+    return merged if merged.numberOfContours else None
 
 
 def legacy_names(family, style):
@@ -254,11 +387,8 @@ def main():
         # yx 항이 기울임. pivot 높이를 축으로 돌려 글자가 칸 밖으로 밀리지 않게 한다.
         tf = Transform(scale, 0, shear * scale, scale, dx - shear * pivot, args.yshift)
 
-        ttpen = TTGlyphPen(None)
-        # CFF 와 glyf 는 외곽선 방향이 반대라 reverse_direction 이 필요하다.
-        pen = TransformPen(Cu2QuPen(ttpen, max_err, reverse_direction=True), tf)
         try:
-            dglyphs[dname].draw(pen)
+            glyph = outline(dglyphs[dname], tf, max_err)
         except Exception as exc:
             print(f"  skip U+{cp:04X} {dname}: {exc}", file=sys.stderr)
             skipped += 1
@@ -271,7 +401,6 @@ def main():
             i += 1
         taken.add(gname)
 
-        glyph = ttpen.glyph()
         if offsets and glyph.numberOfContours:
             # 원본 외곽선은 cmap 에 걸지 않는 글리프로 두고, 그것을 여러 번 겹쳐
             # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
