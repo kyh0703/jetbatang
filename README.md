@@ -102,7 +102,8 @@ SCALE=1.05 YSHIFT=0 ./build.sh       # 한글을 5% 키우고 원래 높이로
 EMBOLDEN_SCALE=1.25 ./build.sh       # 한글 굵기 증가량을 25% 더
 FAMILY="MyBatang NF" ./build.sh      # 글꼴 이름 바꾸기
 
-NERD_FAMILY=CascadiaCode BASE_PREFIX=CaskaydiaCoveNerdFontMono ./build.sh
+# 바탕 Nerd Font (기본값)
+NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./build.sh
 ```
 
 한 종씩 세밀하게 조절하려면 `python3 build.py --help` 를 보세요.
