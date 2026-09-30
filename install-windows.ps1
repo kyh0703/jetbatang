@@ -31,7 +31,7 @@ public class JetBatangFontApi {
 }
 "@
 
-# fonts/ 에 있는 것만 설치한다. 네 종만 받아도, 열여섯 종을 다 받아도 그대로 동작한다.
+# fonts/ 에 있는 것만 설치한다. Releases 에서 몇 종만 받아 넣어도 그대로 동작한다.
 $faces = [ordered]@{
     'JetBatangNF-Thin.ttf'             = 'JetBatang NF Thin (TrueType)'
     'JetBatangNF-ThinItalic.ttf'       = 'JetBatang NF Thin Italic (TrueType)'

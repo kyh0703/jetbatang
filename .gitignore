@@ -3,10 +3,6 @@ build/
 *.zip
 *.tar.xz
 
-# 16 종 전부는 Releases 로 배포한다. 저장소에는 기본 네 종만 둔다.
-fonts/*
-!fonts/JetBatangNF-Regular.ttf
-!fonts/JetBatangNF-Italic.ttf
-!fonts/JetBatangNF-Bold.ttf
-!fonts/JetBatangNF-BoldItalic.ttf
+# 글꼴은 Releases 로만 배포한다. 빌드할 때마다 수십 MB 씩 이력에 쌓이지 않게.
+fonts/
 __pycache__/

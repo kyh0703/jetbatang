@@ -24,9 +24,11 @@ if (상태 === "완료") return "성공";
 ## INSTALL
 
 [Releases](../../releases) 에서 원하는 굵기의 `ttf` 나 `JetBatangNF-all.zip` 을 받으세요.
-저장소 `fonts/` 에는 Regular·Italic·Bold·Bold Italic 네 종만 들어 있어요. 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요.
+설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 글꼴 파일이 없어요.
 
 **Windows**
+
+받은 `ttf` 를 저장소의 `fonts/` 에 넣고 실행하세요. `fonts/` 에 있는 것만 설치해요.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install-windows.ps1
