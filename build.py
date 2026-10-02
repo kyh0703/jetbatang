@@ -9,9 +9,11 @@ import argparse
 import math
 import re
 import sys
+import unicodedata
 
 import pathops
 
+from fontTools.otlLib.builder import buildLigatureSubstSubtable, buildLookup
 from fontTools.misc.transform import Transform
 from fontTools.pens.areaPen import AreaPen
 from fontTools.pens.basePen import BasePen
@@ -20,7 +22,8 @@ from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.recordingPen import RecordingPen, replayRecording
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTFont, newTable
+from fontTools.ttLib.tables import otTables
 from fontTools.ttLib.tables._g_l_y_f import (ARGS_ARE_XY_VALUES,
                                              OVERLAP_COMPOUND, Glyph,
                                              GlyphComponent)
@@ -52,8 +55,13 @@ VOICED = {0x3094: 0x3046, 0x30F7: 0x30EF, 0x30F8: 0x30F0, 0x30F9: 0x30F1, 0x30FA
 # 덮지 않게 그대로 둔다. 2칸으로 세는 터미널에서는 왼쪽 칸에 그려질 뿐이다.
 WIDEN = [0x26A1, 0xFE62]
 
-# 터미널이 1칸으로 세는데 base 에 없는 글자. RIDIBatang 에서 가져와 1칸에 맞춘다. ₩
-NARROW = [0x20A9]
+# 터미널이 1칸으로 세는데 base 에 없는 글자 모양 기호. RIDIBatang 에서 가져와 대문자 높이로 base W
+# 자리에 맞춘다. 다른 기호처럼 base ○ 크기로 줄이면 Ⅳ 가 소문자만 해진다. ₩ ℃ ℉ Ⅰ~Ⅹ ⅰ~ⅹ
+NARROW = [0x20A9, 0x2103, 0x2109, *range(0x2160, 0x216A), *range(0x2170, 0x217A)]
+
+# base 에 없는 KS X 1001 글자 가운데 base 의 다른 글자와 같은 것. 그 글리프를 그대로 건다.
+# 옴(U+2126)·옹스트롬(U+212B) 기호는 그리스 Ω·라틴 Å 와 정준 등가이고, ―(U+2015) 는 1칸 줄표다.
+BASE_ALIASES = {0x2126: 0x03A9, 0x212B: 0x00C5, 0x2015: 0x2014}
 
 # Windows GDI 는 한 가족에 Regular/Italic/Bold/Bold Italic 네 칸만 준다.
 RIBBI = {"Regular", "Italic", "Bold", "Bold Italic"}
@@ -68,6 +76,45 @@ def sanitize(name):
 
 def is_wide(cp):
     return any(a <= cp <= b for a, b in WIDE_RANGES)
+
+
+def ksx1001_symbols(bcmap):
+    """base 에 없는 KS X 1001 기호 가운데 폭이 애매한 것. 터미널은 기본값으로 1칸에 센다.
+
+    한국어 문서의 ※ ① ★ 같은 기호다. 한자 앞의 1~12행에서 고른다. Ĳ ĳ ⁿ ː 같은 라틴 글자는
+    명조로 그리면 base 라틴 옆에서 튀어서 뺀다. 칸을 채워 이어져야 하는 괘선·블록(U+2500–259F)은
+    줄이면 TUI 테두리가 끊기니 base 에 없어도 가져오지 않는다. NARROW 와 BASE_ALIASES 는 따로 다룬다.
+    """
+    for lead in range(0xA1, 0xAD):
+        for trail in range(0xA1, 0xFF):
+            try:
+                ch = bytes([lead, trail]).decode("euc_kr")
+            except UnicodeDecodeError:
+                continue
+            cp = ord(ch)
+            if (unicodedata.east_asian_width(ch) == "A" and cp not in bcmap
+                    and not unicodedata.category(ch).startswith("L")
+                    and not 0x2500 <= cp <= 0x259F
+                    and cp not in NARROW and cp not in BASE_ALIASES):
+                yield cp
+
+
+def font_revision(version):
+    """릴리스 버전 X.Y.Z 를 head.fontRevision 값으로 바꾼다. 1.9.0 < 1.10.0 처럼 태그 순서를 지킨다.
+
+    v1.0.0~v1.4.0 은 base JetBrains Mono 의 2.304 를 그대로 물려받았다. 옛 판과 새 판이 함께 깔리면
+    fontconfig 는 fontRevision 이 큰 쪽을 고르므로, 새 판은 모두 그보다 커야 한다. 그래서 X·Y 를
+    정수부에, Z 를 소수부에 넣는다. 1.5.0 은 105.00, 1.10.2 는 110.02 다.
+    부호 있는 16.16 고정소수에 들어가야 하므로 상한은 327.67.99 다.
+    """
+    found = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not found or int(found[2]) > 99 or int(found[3]) > 99:
+        raise ValueError(f"버전은 X.Y.Z 꼴이고 Y·Z 는 0~99 여야 해요: {version!r}")
+    major, minor, patch = map(int, found.groups())
+    integer = major * 100 + minor
+    if integer >= 32768:
+        raise ValueError(f"글꼴 내부 버전값으로 저장할 수 있는 상한은 327.67.99 예요: {version!r}")
+    return integer + patch / 100
 
 
 def embolden_ring(ex, ey):
@@ -107,6 +154,30 @@ def outline(dglyph, tf, max_err):
     return ttpen.glyph()
 
 
+def kana_contours(dglyph):
+    """가나 외곽선을 나눠 몸통과 탁점·반탁점 경로를 골라낼 수 있게 한다."""
+    rec = RecordingPen()
+    dglyph.draw(rec)
+    contours, cur = [], []
+    for op, args in rec.value:
+        cur.append((op, args))
+        if op in ("closePath", "endPath"):
+            contours.append(cur)
+            cur = []
+    return contours
+
+
+class KanaMark:
+    """원본 가나에서 떼어낸 결합 탁점·반탁점. 획 방향과 반탁점의 속공간을 유지한다."""
+
+    def __init__(self, contours):
+        self.contours = contours
+
+    def draw(self, pen):
+        for contour in self.contours:
+            replayRecording(contour, pen)
+
+
 class Voiced:
     """청음 가나에 ヴ 의 탁점을 얹은 글자. donor 글리프처럼 draw 만 한다."""
 
@@ -126,14 +197,7 @@ def voiced_kana(dglyphs, dcmap, dhmtx):
     옮긴 글자다. 청음 글자를 ウ 와 같은 만큼 옮기고 ヴ 의 탁점을 그대로 얹는다.
     ワ 는 ウ 에서 윗점만 뺀 모양이라 ヷ 는 원본 디자인과 거의 같아진다.
     """
-    rec = RecordingPen()
-    dglyphs[dcmap[0x30F4]].draw(rec)                  # ヴ
-    contours, cur = [], []
-    for op, args in rec.value:
-        cur.append((op, args))
-        if op in ("closePath", "endPath"):
-            contours.append(cur)
-            cur = []
+    contours = kana_contours(dglyphs[dcmap[0x30F4]])  # ヴ
 
     def area(contour):
         pen = AreaPen()
@@ -152,37 +216,185 @@ def voiced_kana(dglyphs, dcmap, dhmtx):
             for cp, src in VOICED.items() if cp not in dcmap and src in dcmap}
 
 
+def combining_kana(dglyphs, dcmap, dhmtx):
+    """ヴ 의 탁점, パ 의 반탁점을 {cp: (경로, 원래 폭, 이름)} 으로 준다."""
+    voiced = kana_contours(dglyphs[dcmap[0x30F4]])
+    def area(contour):
+        pen = AreaPen()
+        replayRecording(contour, pen)
+        return abs(pen.value)
+
+    body = max(voiced, key=area)
+    dakuten = [contour for contour in voiced if contour is not body]
+    top = bounds(dglyphs, dcmap[0x30CF])[3]           # ハ 몸통보다 위에 있는 두 경로가 반탁점
+    handakuten = []
+    for contour in kana_contours(dglyphs[dcmap[0x30D1]]):
+        pen = BoundsPen(None)
+        replayRecording(contour, pen)
+        if pen.bounds[3] > top:
+            handakuten.append(contour)
+    return {0x3099: (KanaMark(dakuten), dhmtx[dcmap[0x30F4]][0], "dakutencomb"),
+            0x309A: (KanaMark(handakuten), dhmtx[dcmap[0x30D1]][0], "handakutencomb")}
+
+
+def add_nfd_substitutions(font):
+    """기존 라틴 GSUB 를 보존하면서 NFD 자모·가나를 같은 NFC 글리프로 조합한다."""
+    cmap = font.getBestCmap()
+    groups = [{} for _ in range(19)]
+    for cp in range(0xAC00, 0xD7A4):
+        if cp not in cmap:
+            continue
+        components = tuple(ord(ch) for ch in unicodedata.normalize("NFD", chr(cp)))
+        if not all(component in cmap for component in components):
+            continue
+        group = groups[(cp - 0xAC00) // 588]
+        group[tuple(cmap[component] for component in components)] = cmap[cp]
+        if len(components) == 3:
+            # NFC 의 LV 음절 뒤에 NFD 받침이 붙은 경우도 같은 LVT 음절로 조합한다.
+            lv = cp - (cp - 0xAC00) % 28
+            if lv in cmap:
+                group[(cmap[lv], cmap[components[-1]])] = cmap[cp]
+    kana = {}
+    for cp in range(0x3041, 0x3100):
+        components = tuple(ord(ch) for ch in unicodedata.normalize("NFD", chr(cp)))
+        if (cp in cmap and len(components) == 2 and components[-1] in (0x3099, 0x309A)
+                and all(component in cmap for component in components)):
+            kana[tuple(cmap[component] for component in components)] = cmap[cp]
+    subtables = [buildLigatureSubstSubtable(group) for group in (*groups, kana) if group]
+    if not subtables:
+        return
+
+    if "GSUB" not in font:
+        font["GSUB"] = newTable("GSUB")
+        gsub = font["GSUB"].table = otTables.GSUB()
+        gsub.Version = 0x00010000
+        gsub.ScriptList = otTables.ScriptList()
+        gsub.ScriptList.ScriptRecord = []
+        gsub.FeatureList = otTables.FeatureList()
+        gsub.FeatureList.FeatureRecord = []
+        gsub.LookupList = otTables.LookupList()
+        gsub.LookupList.Lookup = []
+    gsub = font["GSUB"].table
+    lookup_index = len(gsub.LookupList.Lookup)
+    # 전체가 64 KiB 를 넘어도 각 하위 테이블에는 32비트 오프셋으로 접근한다.
+    gsub.LookupList.Lookup.append(buildLookup(subtables, table="GSUB", extension=True))
+    gsub.LookupList.LookupCount = len(gsub.LookupList.Lookup)
+    features = gsub.FeatureList.FeatureRecord
+    ccmp = [i for i, record in enumerate(features) if record.FeatureTag == "ccmp"]
+    if not ccmp:
+        index = next((i for i, record in enumerate(features) if record.FeatureTag > "ccmp"), len(features))
+        record = otTables.FeatureRecord()
+        record.FeatureTag = "ccmp"
+        record.Feature = otTables.Feature()
+        record.Feature.FeatureParams = None
+        record.Feature.LookupListIndex = []
+        features.insert(index, record)
+        # FeatureRecord 는 태그 순서여야 하므로 삽입 뒤 기존 스크립트의 인덱스만 옮긴다.
+        for script_record in gsub.ScriptList.ScriptRecord:
+            script = script_record.Script
+            languages = [script.DefaultLangSys] + [r.LangSys for r in script.LangSysRecord]
+            for language in languages:
+                if language is None:
+                    continue
+                language.FeatureIndex = [i + (i >= index) for i in language.FeatureIndex]
+                if language.ReqFeatureIndex != 0xFFFF and language.ReqFeatureIndex >= index:
+                    language.ReqFeatureIndex += 1
+        variations = getattr(gsub, "FeatureVariations", None)
+        if variations is not None:
+            for variation in variations.FeatureVariationRecord:
+                for substitution in variation.FeatureTableSubstitution.SubstitutionRecord:
+                    if substitution.FeatureIndex >= index:
+                        substitution.FeatureIndex += 1
+        ccmp = [index]
+    for index in ccmp:
+        feature = features[index].Feature
+        feature.LookupListIndex.append(lookup_index)
+        feature.LookupCount = len(feature.LookupListIndex)
+    gsub.FeatureList.FeatureCount = len(features)
+
+    scripts = gsub.ScriptList.ScriptRecord
+    for tag in ("DFLT", "hang", "kana"):
+        record = next((record for record in scripts if record.ScriptTag == tag), None)
+        # 없는 스크립트는 기존 DFLT 로 가게 둔다. ccmp 만 든 hang/kana 를 새로 만들면
+        # 한글·가나로 시작하는 혼합 문자열에서 원래의 라틴 calt 리거처가 꺼진다.
+        if record is None and tag != "DFLT":
+            continue
+        if record is None:
+            record = otTables.ScriptRecord()
+            record.ScriptTag = tag
+            record.Script = otTables.Script()
+            record.Script.LangSysRecord = []
+            record.Script.LangSysCount = 0
+            record.Script.DefaultLangSys = None
+            scripts.append(record)
+        script = record.Script
+        if script.DefaultLangSys is None:
+            script.DefaultLangSys = otTables.LangSys()
+            script.DefaultLangSys.LookupOrder = None
+            script.DefaultLangSys.ReqFeatureIndex = 0xFFFF
+            script.DefaultLangSys.FeatureIndex = []
+        for language in [script.DefaultLangSys] + [r.LangSys for r in script.LangSysRecord]:
+            if not any(index in language.FeatureIndex for index in ccmp):
+                language.FeatureIndex.append(ccmp[0])
+            language.FeatureCount = len(language.FeatureIndex)
+    scripts.sort(key=lambda record: record.ScriptTag)
+    gsub.ScriptList.ScriptCount = len(scripts)
+
+
+def bounds(glyphs, name, tf=None):
+    pen = BoundsPen(glyphs)
+    glyphs[name].draw(TransformPen(pen, tf) if tf else pen)
+    return pen.bounds
+
+
 def fit_cell(dglyphs, dcmap, bglyphs, bcmap, shear, ex):
-    """NARROW 글자를 base 1칸에 놓는 변환을 {cp: 변환} 으로 준다.
+    """NARROW 글자를 base 1칸에 놓는 {cp: (변환, 가로 굵기 증가량)} 을 준다.
 
-    기울이고 굵기를 불린 뒤의 가로 범위가 같은 굵기·기울기의 base W 와 같게 하고,
-    세로는 대문자 H 높이를 base 에 맞춘다. RIDIBatang ₩ 은 폭이 815 라 Regular 에서
-    가로를 0.69 배로 줄인다. 한글처럼 올려 앉히지 않는다.
+    세로는 대문자 H 높이를 base 에 맞추고, 가로도 같은 배율로 키운다. 기울이고 굵기를 불린
+    뒤에 같은 굵기·기울기의 base W 보다 넓으면 W 의 가로 범위에 맞게 가로만 줄인다.
+    RIDIBatang ₩ 은 폭이 815 라 Regular 에서 가로를 0.69 배로 줄인다. W 보다 좁은 Ⅰ 같은
+    글자는 W 자리 가운데에 둔다. 한글처럼 올려 앉히지 않고 잉크 바닥을 기준선에 맞춘다.
+    RIDIBatang 로마 숫자는 전각 틀에 맞춰 기준선보다 43~59 내려 앉아 있다.
+
+    가로로 줄이는 글자는 가로 굵기 증가량도 같은 비율로 줄인다. 원래 폭에서 굵게 한 다음 가로로
+    줄인 것과 같은 모양이라, 획과 획 사이의 비율이 줄이지 않은 글자와 같다. 줄인 뒤에 ex 를 다
+    불리면 ExtraBold Ⅷ 은 0.55 배로 좁아진 획 사이가 메워져 획 다섯이 둘로 붙는다.
     """
-    def bounds(glyphs, name, tf=None):
-        pen = BoundsPen(glyphs)
-        glyphs[name].draw(TransformPen(pen, tf) if tf else pen)
-        return pen.bounds
-
     sy = bounds(bglyphs, bcmap[ord("H")])[3] / bounds(dglyphs, dcmap[ord("H")])[3]
     wx0, _, wx1, _ = bounds(bglyphs, bcmap[ord("W")])
-    left, width = wx0 + ex / 2, wx1 - wx0 - ex        # 굵기를 불릴 몫을 뺀 자리
 
     def span(name, sx):
         x0, _, x1, _ = bounds(dglyphs, name, Transform(sx, 0, shear * sy, sy, 0, 0))
         return x0, x1 - x0
+
+    def grow(sx):
+        return ex * min(1.0, sx / sy)
+
+    def inked(name, sx):
+        """굵기를 불린 뒤의 잉크 폭."""
+        return span(name, sx)[1] + grow(sx)
 
     fits = {}
     for cp in NARROW:
         if cp not in dcmap or cp in bcmap:
             continue
         name = dcmap[cp]
-        # 기울인 뒤의 폭은 sx 에 대해 일차라 두 점으로 푼다.
-        _, w1 = span(name, 1.0)
-        _, w2 = span(name, 0.5)
-        sx = 0.5 + (width - w2) * 0.5 / (w1 - w2)
-        x0, _ = span(name, sx)
-        fits[cp] = Transform(sx, 0, shear * sy, sy, left - x0, 0)
+        # 기울인 뒤의 폭은 sx 에 대해 거의 일차지만, Ⅷ 처럼 양 끝을 차지하는 점이 sx 에 따라
+        # 바뀌는 글자는 두 점으로 풀면 10 가까이 어긋난다. 할선법으로 반 단위 안쪽까지 다듬는다.
+        lo, wlo = 0.5, inked(name, 0.5)
+        sx, w = 1.0, inked(name, 1.0)
+        for _ in range(8):
+            if abs(w - (wx1 - wx0)) < 0.5 or w == wlo:
+                break
+            lo, wlo, sx = sx, w, sx + (wx1 - wx0 - w) * (sx - lo) / (w - wlo)
+            w = inked(name, sx)
+        sx = min(sy, sx)
+        x0, w = span(name, sx)
+        # 기준선까지는 정수 단위로 옮긴다. 소수로 옮기면 ExtraBold ⅷ 의 겹친 복사본을 skia 가
+        # 두 경로 모두 틀리게 합쳐서 겹친 채 남았다.
+        bottom = round(sy * bounds(dglyphs, name)[1])
+        # 굵기는 양쪽으로 반씩 자라므로 불리기 전의 잉크를 W 가운데에 둔다.
+        fits[cp] = (Transform(sx, 0, shear * sy, sy, (wx0 + wx1 - w) / 2 - x0, -bottom), grow(sx))
     return fits
 
 
@@ -406,6 +618,8 @@ def main():
                     help="라틴·아이콘을 담당할 Nerd Font Mono ttf")
     ap.add_argument("--donor", required=True, help="RIDIBatang.otf")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--font-version", required=True,
+                    help="릴리스 버전 X.Y.Z. 글꼴 정보의 버전(nameID 5)과 head.fontRevision 에 들어간다")
     ap.add_argument("--family", default="JetBatang NF")
     ap.add_argument("--style", default="Regular",
                     help="타이포그래픽 스타일. 예: Regular, Italic, SemiBold, Bold Italic")
@@ -427,6 +641,10 @@ def main():
     ap.add_argument("--max-err", type=float, default=0.001,
                     help="곡선 변환 허용오차(em 비율)")
     args = ap.parse_args()
+    try:
+        revision = font_revision(args.font_version)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     base = TTFont(args.base)
     donor = TTFont(args.donor)
@@ -460,6 +678,15 @@ def main():
     taken = set(order)
     added = {}
 
+    def unique_name(dname):
+        gname = sanitize("rb." + dname)
+        i = 2
+        while gname in taken:
+            gname = sanitize(f"rb.{dname}.{i}")
+            i += 1
+        taken.add(gname)
+        return gname
+
     def put(name, glyph, advance=wide):
         glyf.glyphs[name] = glyph
         glyph.recalcBounds(glyf)
@@ -481,9 +708,40 @@ def main():
     skipped = len(targets) - len(sources)
     for cp, (drawing, advance, name) in voiced_kana(dglyphs, dcmap, dhmtx).items():
         sources[cp] = (drawing, centered(advance), wide, name)
+    for cp, (drawing, advance, name) in combining_kana(dglyphs, dcmap, dhmtx).items():
+        tf = centered(advance)
+        # 결합점의 advance 는 0. 현재 펜 위치에서 직전의 두 칸으로 돌아가 놓는다.
+        sources[cp] = (drawing, Transform(tf.xx, tf.xy, tf.yx, tf.yy, tf.dx - wide, tf.dy), 0, name)
     bcmap = base.getBestCmap()
-    for cp, tf in fit_cell(dglyphs, dcmap, base.getGlyphSet(), bcmap, shear, ex).items():
+    bglyphs = base.getGlyphSet()
+
+    # 1칸 기호는 base ○ 크기로 맞춘다. RIDIBatang ○ 이 base ○ 가 되는 배율로 줄이고, 그래도
+    # base ○ 보다 넓은 글자(① ♣)는 그 폭에 들게 더 줄인다. 굵기를 불릴 몫도 미리 뺀다.
+    # 이탤릭에서도 base ○ ● ◇ 처럼 세워 둔다.
+    limit = cell
+    if 0x25CB in bcmap:
+        x0, _, x1, _ = bounds(bglyphs, bcmap[0x25CB])
+        limit = x1 - x0
+    x0, _, x1, _ = bounds(dglyphs, dcmap[0x25CB])
+    ring = limit / (x1 - x0)
+    dmid = (donor["hhea"].ascent + donor["hhea"].descent) / 2.0     # donor 전각 틀의 세로 가운데
+
+    def in_cell(name):
+        """donor 기호를 base 1칸 가운데에 줄여 놓는다. 2칸에 놓을 때와 세로 가운데가 같아서
+        ① 과 ㉠ 이 한 줄에 나란하다. 가로는 잉크 가운데를 맞춘다. ☜ ☞ ∝ ℡ 처럼 전각 틀의 한쪽으로
+        쏠린 기호를 틀째 가운데에 두면 base ○ 보다 옆 칸을 더 덮는다."""
+        x0, _, x1, _ = bounds(dglyphs, name)
+        k = min(ring, (limit - ex) / (x1 - x0))
+        return Transform(k, 0, 0, k, (cell - (x0 + x1) * k) / 2.0, (scale - k) * dmid + args.yshift)
+
+    for cp in ksx1001_symbols(bcmap):
+        if cp in dcmap:
+            sources[cp] = (dglyphs[dcmap[cp]], in_cell(dcmap[cp]), cell, dcmap[cp])
+    rings = {}      # 기본과 다른 굵기 증가량으로 불리는 글자의 offsets
+    for cp, (tf, grow) in fit_cell(dglyphs, dcmap, bglyphs, bcmap, shear, ex).items():
         sources[cp] = (dglyphs[dcmap[cp]], tf, cell, dcmap[cp])
+        if offsets:
+            rings[cp] = embolden_ring(grow, ey)
 
     for cp in sorted(sources):
         drawing, tf, advance, dname = sources[cp]
@@ -495,20 +753,16 @@ def main():
             skipped += 1
             continue
 
-        gname = sanitize("rb." + dname)
-        i = 2
-        while gname in taken:
-            gname = sanitize(f"rb.{dname}.{i}")
-            i += 1
-        taken.add(gname)
+        gname = unique_name(dname)
 
-        if offsets and glyph.numberOfContours:
+        ring = rings.get(cp, offsets)
+        if ring and glyph.numberOfContours:
             # 원본 외곽선은 cmap 에 걸지 않는 글리프로 두고, 그것을 여러 번 겹쳐
             # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
             src = gname + ".src"
             taken.add(src)
             put(src, glyph, advance)
-            glyph = make_composite(src, offsets)
+            glyph = make_composite(src, ring)
         put(gname, glyph, advance)
         added[cp] = gname
 
@@ -523,7 +777,7 @@ def main():
             if not glyf[name].isComposite():
                 continue
             src = name + ".src"
-            one = merge_copies(glyf[src], offsets)
+            one = merge_copies(glyf[src], rings.get(cp, offsets))
             if one is None:
                 failed.append(chr(cp))
                 continue
@@ -551,6 +805,26 @@ def main():
         put(gname, make_composite(src, [((wide - hmtx[src][0]) // 2, 0)]))
         added[cp] = gname
 
+    # base 에 같은 글자가 있으면 RIDIBatang 에서 가져오지 않고 base 글리프를 그대로 건다.
+    for cp, src in BASE_ALIASES.items():
+        if cp not in bcmap and src in bcmap:
+            added[cp] = bcmap[src]
+
+
+    # NFD 의 초성·중성·종성은 호환 자모의 외곽선을 재사용하되 서로 다른 glyph ID 를 준다.
+    # 같은 ID 를 걸면 ccmp 가 호환 자모 "ㄱㅏ" 까지 "가" 로 조합해 버린다.
+    cmap = bcmap | added
+    modern_jamo = (*range(0x1100, 0x1113), *range(0x1161, 0x1176), *range(0x11A8, 0x11C3))
+    for cp in modern_jamo:
+        letter = unicodedata.name(chr(cp)).split(" ", 2)[2]
+        compatible = ord(unicodedata.lookup("HANGUL LETTER " + letter))
+        if compatible not in cmap:
+            continue
+        gname = unique_name(f"nfd{cp:04X}")
+        leading = cp < 0x1161
+        put(gname, make_composite(cmap[compatible], [(0 if leading else -wide, 0)]),
+            wide if leading else 0)
+        added[cp] = gname
     base.setGlyphOrder(order)
     glyf.glyphOrder = order
     base["maxp"].numGlyphs = len(order)
@@ -561,6 +835,11 @@ def main():
         for cp, gname in added.items():
             if cp <= 0xFFFF or sub.format in (12, 13):
                 sub.cmap[cp] = gname
+
+    add_nfd_substitutions(base)
+    if "GDEF" in base and base["GDEF"].table.GlyphClassDef is not None:
+        for cp in (0x3099, 0x309A):
+            base["GDEF"].table.GlyphClassDef.classDefs[added[cp]] = 3
 
     # 한글을 쓸 수 있는 폰트라고 Windows 에 알린다
     os2 = base["OS/2"]
@@ -585,9 +864,12 @@ def main():
     drop = set(range(0, 15)) | {16, 17, 18, 20, 21, 22}
     base["name"].names = [n for n in base["name"].names if n.nameID not in drop]
     for nid, value in [(0, copyright_), (1, fam1), (2, sub2),
-                       (3, f"{ps};merged-with-RIDIBatang"), (4, full), (6, ps),
+                       (3, f"{ps};merged-with-RIDIBatang"), (4, full),
+                       (5, f"Version {args.font_version}"), (6, ps),
                        (13, OFL_DESC), (14, OFL_URL), (16, args.family), (17, args.style)]:
         set_name(base, nid, value)
+    # 비워 두면 base 의 2.304 가 남아 JetBrains Mono 와 같은 판으로 보인다.
+    base["head"].fontRevision = revision
 
     base.save(args.out)
     print(f"  저장: {args.out}")

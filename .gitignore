@@ -5,4 +5,5 @@ build/
 
 # 글꼴은 Releases 로만 배포한다. 빌드할 때마다 수십 MB 씩 이력에 쌓이지 않게.
 fonts/
+dist/
 __pycache__/

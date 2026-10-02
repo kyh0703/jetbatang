@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   JetBatang NF 를 현재 사용자 계정에 설치하거나 제거한다.
 
@@ -7,6 +7,9 @@
   DirectWrite 는 가족 목록에는 올리면서 파일로 연결하지 못해, 그 가족을 쓰려는
   프로그램이 GetFont 에서 DWRITE_E_FILENOTFOUND(0x88985003) 를 받는다.
   그래서 AddFontResourceW 를 부르고 WM_FONTCHANGE 를 방송한다.
+
+  글꼴은 이 스크립트와 같은 폴더에서 찾고, 없으면 그 아래 fonts\ 에서 찾는다. Releases 의
+  JetBatangNF-all.zip 을 풀면 스크립트와 ttf 가 한 폴더에 있고, 저장소에서 빌드하면 fonts\ 에 있다.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File install-windows.ps1
@@ -31,7 +34,7 @@ public class JetBatangFontApi {
 }
 "@
 
-# fonts/ 에 있는 것만 설치한다. Releases 에서 몇 종만 받아 넣어도 그대로 동작한다.
+# 있는 것만 설치한다. Releases 에서 몇 종만 받아 스크립트 옆에 두어도 그대로 동작한다.
 $faces = [ordered]@{
     'JetBatangNF-Thin.ttf'             = 'JetBatang NF Thin (TrueType)'
     'JetBatangNF-ThinItalic.ttf'       = 'JetBatang NF Thin Italic (TrueType)'
@@ -52,7 +55,7 @@ $faces = [ordered]@{
 }
 $fontDir = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts'
 $regKey  = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
-$source  = Join-Path $PSScriptRoot 'fonts'
+$sources = @($PSScriptRoot, (Join-Path $PSScriptRoot 'fonts'))
 
 function Broadcast-FontChange {
     $result = [IntPtr]::Zero
@@ -79,8 +82,9 @@ if ($Uninstall) {
 New-Item -ItemType Directory -Path $fontDir -Force | Out-Null
 $installed = @()
 foreach ($file in $faces.Keys) {
-    $src = Join-Path $source $file
-    if (-not (Test-Path $src)) { continue }
+    $src = $sources | ForEach-Object { Join-Path $_ $file } | Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+    if (-not $src) { continue }
     $path = Join-Path $fontDir $file
 
     # 이미 걸려 있는 판이 같은 파일이면 굳이 건드리지 않는다.
@@ -108,7 +112,9 @@ foreach ($file in $faces.Keys) {
     $installed += $path
     Write-Host "  설치: $file"
 }
-if ($installed.Count -eq 0) { throw "설치할 글꼴이 없습니다. fonts/ 를 확인하세요: $source" }
+if ($installed.Count -eq 0) {
+    throw "설치할 글꼴이 없습니다. JetBatangNF-*.ttf 를 이 스크립트 옆이나 fonts\ 에 두세요: $PSScriptRoot"
+}
 Broadcast-FontChange
 
 Add-Type -AssemblyName PresentationCore

@@ -8,6 +8,10 @@ NERD_FAMILY="${NERD_FAMILY:-JetBrainsMono}"
 BASE_PREFIX="${BASE_PREFIX:-JetBrainsMonoNerdFontMono}"
 RIDI_URL="https://ridicorp.com/wp-content/themes/ridicorp/css/font/RIDIBatang.otf"
 FAMILY="${FAMILY:-JetBatang NF}"
+# 글꼴 정보에 찍히는 릴리스 버전. 릴리스 태그(vX.Y.Z)와 같은 값을 매번 넘긴다. 기본값을 두면
+# 다음 릴리스에서 올리는 걸 잊어도 빌드가 돌아서, 다른 글꼴이 같은 버전으로 나간다.
+VERSION="${VERSION:-}"
+[ -n "$VERSION" ] || { echo "VERSION 을 지정하세요. 예: VERSION=1.5.0 ./build.sh"; exit 1; }
 SCALE="${SCALE:-1.00}"
 YSHIFT="${YSHIFT:-60}"
 EMBOLDEN_SCALE="${EMBOLDEN_SCALE:-1.0}"
@@ -41,6 +45,12 @@ VARIANTS=(
 command -v curl >/dev/null || { echo "curl 이 필요합니다"; exit 1; }
 command -v unzip >/dev/null || { echo "unzip 이 필요합니다"; exit 1; }
 python3 -c "import fontTools, pathops" 2>/dev/null || { echo "pip install fonttools skia-pathops 먼저 하세요"; exit 1; }
+# 원본을 내려받기 전에 버전부터 확인한다. 규칙은 build.py 와 같은 함수 하나로 본다.
+python3 -c 'import sys, build
+try:
+    build.font_revision(sys.argv[1])
+except ValueError as exc:
+    sys.exit(str(exc))' "$VERSION"
 
 mkdir -p build fonts
 
@@ -56,7 +66,7 @@ if [ ! -f "build/$BASE_PREFIX-Regular.ttf" ]; then
   unzip -oq "build/$NERD_FAMILY.zip" -d build "$BASE_PREFIX-*.ttf"
 fi
 
-echo "==> 합치는 중 (scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE)"
+echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE)"
 for v in "${VARIANTS[@]}"; do
   suffix="${v%%:*}"; rest="${v#*:}"
   style="${rest%%:*}"; embolden="${rest##*:}"
@@ -69,7 +79,7 @@ for v in "${VARIANTS[@]}"; do
     --base "build/$BASE_PREFIX-$suffix.ttf" \
     --donor build/RIDIBatang.otf \
     --out "fonts/JetBatangNF-$suffix.ttf" \
-    --family "$FAMILY" --style "$style" \
+    --family "$FAMILY" --style "$style" --font-version "$VERSION" \
     --scale "$SCALE" --yshift "$YSHIFT" "${args[@]}"
 done
 
