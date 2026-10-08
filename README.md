@@ -26,7 +26,7 @@ if (상태 === "완료") return "성공";
 
 [Releases](../../releases) 에서 원하는 굵기의 `ttf` 나 `JetBatangNF-all.zip` 을 받으세요.
 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 글꼴 파일이 없어요.
-설치한 판은 글꼴 정보의 버전(`Version 1.5.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
+설치한 판은 글꼴 정보의 버전(`Version 1.6.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
 
 **Windows**
 
@@ -185,10 +185,10 @@ NFD 를 지원하고, 호환 자모 `ㄱㅏ` 는 조합하지 않아요. 원본�
 
 ```sh
 pip install fonttools skia-pathops
-VERSION=1.5.0 ./build.sh
+VERSION=1.6.0 ./build.sh
 ```
 
-`VERSION` 은 글꼴 정보에 찍히는 버전이라 꼭 넘겨야 해요. 릴리스 태그(`v1.5.0`)와 같은 값을 쓰세요.
+`VERSION` 은 글꼴 정보에 찍히는 버전이라 꼭 넘겨야 해요. 릴리스 태그(`v1.6.0`)와 같은 값을 쓰세요.
 빠졌거나 `X.Y.Z` 꼴이 아니면 원본을 내려받기 전에 멈춰요. 기본값에 기대어 이전 버전으로 빌드하는
 일을 막으려고 매번 릴리스 버전을 직접 지정하게 했어요. 이전 값을 다시 넘기는 것까지 막지는 못해요.
 글꼴 내부 버전값의 표현 범위 때문에 `Y`·`Z` 는 0~99, 버전의 상한은 `327.67.99` 예요.
@@ -205,13 +205,13 @@ python3 -m unittest discover tests
 빌드 값을 바꿀 때도 `VERSION` 은 같이 넘겨요.
 
 ```sh
-VERSION=1.5.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로
-VERSION=1.5.0 EMBOLDEN_SCALE=1.25 ./build.sh     # 한글 굵기 증가량(가는 판은 깎는 양)을 25% 더
-VERSION=1.5.0 JOBS=4 ./build.sh                  # 동시에 만드는 굵기 수 줄이기(기본은 CPU 수)
-VERSION=1.5.0 FAMILY="MyBatang NF" ./build.sh    # 글꼴 이름 바꾸기
+VERSION=1.6.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로
+VERSION=1.6.0 EMBOLDEN_SCALE=1.25 ./build.sh     # 한글 굵기 증가량(가는 판은 깎는 양)을 25% 더
+VERSION=1.6.0 JOBS=4 ./build.sh                  # 동시에 만드는 굵기 수 줄이기(기본은 CPU 수)
+VERSION=1.6.0 FAMILY="MyBatang NF" ./build.sh    # 글꼴 이름 바꾸기
 
 # 바탕 Nerd Font (기본값)
-VERSION=1.5.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./build.sh
+VERSION=1.6.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./build.sh
 ```
 
 한 종씩 세밀하게 조절하려면 `python3 build.py --help` 를 보세요.

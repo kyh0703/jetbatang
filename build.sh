@@ -11,7 +11,7 @@ FAMILY="${FAMILY:-JetBatang NF}"
 # 글꼴 정보에 찍히는 릴리스 버전. 릴리스 태그(vX.Y.Z)와 같은 값을 매번 넘긴다. 기본값을 두면
 # 다음 릴리스에서 올리는 걸 잊어도 빌드가 돌아서, 다른 글꼴이 같은 버전으로 나간다.
 VERSION="${VERSION:-}"
-[ -n "$VERSION" ] || { echo "VERSION 을 지정하세요. 예: VERSION=1.5.0 ./build.sh"; exit 1; }
+[ -n "$VERSION" ] || { echo "VERSION 을 지정하세요. 예: VERSION=1.6.0 ./build.sh"; exit 1; }
 SCALE="${SCALE:-1.00}"
 YSHIFT="${YSHIFT:-60}"
 EMBOLDEN_SCALE="${EMBOLDEN_SCALE:-1.0}"
