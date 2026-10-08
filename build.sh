@@ -15,6 +15,8 @@ VERSION="${VERSION:-}"
 SCALE="${SCALE:-1.00}"
 YSHIFT="${YSHIFT:-60}"
 EMBOLDEN_SCALE="${EMBOLDEN_SCALE:-1.0}"
+# 굵기마다 따로 도는 build.py 를 동시에 몇 개까지 돌릴지. 하나에 메모리를 350MB 안팎 쓴다.
+JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
 # 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량
 #
@@ -66,22 +68,34 @@ if [ ! -f "build/$BASE_PREFIX-Regular.ttf" ]; then
   unzip -oq "build/$NERD_FAMILY.zip" -d build "$BASE_PREFIX-*.ttf"
 fi
 
-echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE)"
-for v in "${VARIANTS[@]}"; do
-  suffix="${v%%:*}"; rest="${v#*:}"
-  style="${rest%%:*}"; embolden="${rest##*:}"
+# 한 종을 만들고 로그를 한 번에 찍는다. 동시에 도는 다른 종의 로그와 줄이 섞이지 않게 한다.
+build_one() {
+  local suffix="${1%%:*}" rest="${1#*:}"
+  local style="${rest%%:*}" embolden="${rest##*:}"
   embolden=$(python3 -c "print(round($embolden * $EMBOLDEN_SCALE, 2))")
 
-  args=(--embolden "$embolden")
+  local args=(--embolden "$embolden")
   case "$suffix" in *Italic) args+=(--shear-from-base);; esac
 
-  python3 build.py \
-    --base "build/$BASE_PREFIX-$suffix.ttf" \
-    --donor build/RIDIBatang.otf \
-    --out "fonts/JetBatangNF-$suffix.ttf" \
-    --family "$FAMILY" --style "$style" --font-version "$VERSION" \
-    --scale "$SCALE" --yshift "$YSHIFT" "${args[@]}"
-done
+  local log
+  if log=$(python3 build.py \
+      --base "build/$BASE_PREFIX-$suffix.ttf" \
+      --donor build/RIDIBatang.otf \
+      --out "fonts/JetBatangNF-$suffix.ttf" \
+      --family "$FAMILY" --style "$style" --font-version "$VERSION" \
+      --scale "$SCALE" --yshift "$YSHIFT" "${args[@]}" 2>&1); then
+    printf '==> %s\n%s\n' "$suffix" "$log"
+  else
+    printf '==> %s 실패\n%s\n' "$suffix" "$log" >&2
+    return 1
+  fi
+}
+export -f build_one
+export BASE_PREFIX FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE
+
+echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE, jobs=$JOBS)"
+printf '%s\n' "${VARIANTS[@]}" | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} ||
+  { echo "빌드에 실패한 굵기가 있어요. 위 로그를 확인하세요"; exit 1; }
 
 echo
 echo "완료. fonts/ 를 확인하세요."

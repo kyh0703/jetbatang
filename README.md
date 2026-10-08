@@ -207,6 +207,7 @@ python3 -m unittest discover tests
 ```sh
 VERSION=1.5.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로
 VERSION=1.5.0 EMBOLDEN_SCALE=1.25 ./build.sh     # 한글 굵기 증가량(가는 판은 깎는 양)을 25% 더
+VERSION=1.5.0 JOBS=4 ./build.sh                  # 동시에 만드는 굵기 수 줄이기(기본은 CPU 수)
 VERSION=1.5.0 FAMILY="MyBatang NF" ./build.sh    # 글꼴 이름 바꾸기
 
 # 바탕 Nerd Font (기본값)
