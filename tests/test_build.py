@@ -235,6 +235,32 @@ class RegularTest(unittest.TestCase):
                 # 탁점 두 획이 청음 글자에 더해진다.
                 self.assertEqual(glyph.numberOfContours, self.glyph(plain)[0].numberOfContours + 2)
 
+    def test_small_ka_ke_and_spacing_marks_reuse_ridibatang_strokes(self):
+        # RIDIBatang 에 없는 ゕ ゖ ゛ ゜ 가 빠지면 다른 글꼴의 고딕 가나가 섞인다. ゕ ゖ 는 か け 를
+        # 원본의 ヵ ヶ 가 カ ケ 보다 작은 만큼 줄이고, ゛ ゜ 는 결합 탁점·반탁점과 같은 모양을
+        # 제 칸 왼쪽 위에 그린다. 앞 글자 오른쪽 위에 붙어 보이게 하는 일본어 글꼴의 관례다.
+        def height(ch):
+            glyph, _ = self.glyph(ch)
+            return glyph.yMax - glyph.yMin
+
+        for small, big, twin, twin_big in zip("ゕゖ", "かけ", "ヵヶ", "カケ"):
+            with self.subTest(ch=small):
+                self.assertTrue(ord(small) in self.cmap, f"{small} 가 없다")
+                _, advance = self.glyph(small)
+                self.assertEqual(advance, 1200)
+                self.assertAlmostEqual(height(small) / height(big), height(twin) / height(twin_big),
+                                       delta=0.02)
+        for mark, combining in zip("゛゜", "\u3099\u309A"):
+            with self.subTest(ch=mark):
+                self.assertTrue(ord(mark) in self.cmap, f"{mark} 가 없다")
+                glyph, advance = self.glyph(mark)
+                twin, _ = self.glyph(combining)
+                self.assertEqual(advance, 1200)
+                self.assertEqual(glyph.numberOfContours, twin.numberOfContours)
+                self.assertAlmostEqual(glyph.xMax - glyph.xMin, twin.xMax - twin.xMin, delta=1)
+                self.assertAlmostEqual(glyph.yMin, twin.yMin, delta=1)
+                self.assertLess(glyph.xMax, 600)
+
     def test_fullwidth_won_sign_is_not_a_backslash(self):
         # RIDIBatang 은 ￦ 에 전각 역슬래시 모양을 걸어 두었다. ₩ 은 옆으로 넓고 \ 는 세로로 길다.
         glyph, advance = self.glyph("￦")

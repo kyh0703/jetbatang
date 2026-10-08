@@ -50,6 +50,12 @@ ALIASES = {0x30FC: 0x2015, 0xFFE6: 0x20A9}
 # RIDIBatang 에 없는 탁음 가나 → 탁점을 얹을 청음 가나. ゔ ヷ ヸ ヹ ヺ
 VOICED = {0x3094: 0x3046, 0x30F7: 0x30EF, 0x30F8: 0x30F0, 0x30F9: 0x30F1, 0x30FA: 0x30F2}
 
+# RIDIBatang 에 없는 작은 히라가나 → (줄일 히라가나, 그만큼 줄어든 원본 가타카나 짝). ゕ ゖ
+SMALL = {0x3095: (0x304B, 0x30AB, 0x30F5), 0x3096: (0x3051, 0x30B1, 0x30F6)}
+
+# RIDIBatang 에 없는 띄어 쓰는 탁점·반탁점 → 같은 모양의 결합 문자. ゛ ゜
+SPACING_MARKS = {0x309B: 0x3099, 0x309C: 0x309A}
+
 # base 가 1칸 폭으로 그렸지만 터미널은 2칸으로 세는 글자. 2칸 가운데로 옮긴다. ⚡ ﹢
 # ☰(U+2630) 도 Unicode 16 부터 2칸이지만, 아직 1칸으로 세는 터미널에서 옆 글자를
 # 덮지 않게 그대로 둔다. 2칸으로 세는 터미널에서는 왼쪽 칸에 그려질 뿐이다.
@@ -191,6 +197,16 @@ class Voiced:
             replayRecording(mark, pen)
 
 
+class Moved:
+    """다른 글자를 옮기거나 줄여 그리는 글자. donor 글리프처럼 draw 만 한다."""
+
+    def __init__(self, glyph, tf):
+        self.glyph, self.tf = glyph, tf
+
+    def draw(self, pen):
+        self.glyph.draw(TransformPen(pen, self.tf))
+
+
 def voiced_kana(dglyphs, dcmap, dhmtx):
     """VOICED 글자를 {cp: (그릴 거리, advance, 이름)} 으로 만든다.
 
@@ -236,6 +252,45 @@ def combining_kana(dglyphs, dcmap, dhmtx):
             handakuten.append(contour)
     return {0x3099: (KanaMark(dakuten), dhmtx[dcmap[0x30F4]][0], "dakutencomb"),
             0x309A: (KanaMark(handakuten), dhmtx[dcmap[0x30D1]][0], "handakutencomb")}
+
+
+def small_kana(dglyphs, dcmap, dhmtx):
+    """SMALL 글자를 {cp: (그릴 거리, advance, 이름)} 으로 만든다.
+
+    원본의 ヵ ヶ 는 カ ケ 를 0.81 배쯤 줄여 아래로 내린 모양이다. か け 를 같은 배율로 줄이고,
+    잉크 가운데와 바닥을 カ→ヵ 만큼 옮긴다.
+    """
+    made = {}
+    for cp, (big, twin_big, twin) in SMALL.items():
+        if cp in dcmap or not all(c in dcmap for c in (big, twin_big, twin)):
+            continue
+        bx0, by0, bx1, by1 = bounds(dglyphs, dcmap[twin_big])
+        sx0, sy0, sx1, sy1 = bounds(dglyphs, dcmap[twin])
+        s = ((sx1 - sx0) / (bx1 - bx0) + (sy1 - sy0) / (by1 - by0)) / 2
+        x0, y0, x1, _ = bounds(dglyphs, dcmap[big])
+        cx = (x0 + x1) / 2 + ((sx0 + sx1) - (bx0 + bx1)) / 2
+        bottom = y0 + sy0 - by0
+        tf = Transform(s, 0, 0, s, cx - s * (x0 + x1) / 2, bottom - s * y0)
+        made[cp] = (Moved(dglyphs[dcmap[big]], tf), dhmtx[dcmap[big]][0], f"uni{cp:04X}")
+    return made
+
+
+def spacing_marks(combining):
+    """SPACING_MARKS 글자를 {cp: (그릴 거리, advance, 이름)} 으로 만든다. combining 은
+    combining_kana 의 결과다.
+
+    결합 문자는 원본 ヴ パ 의 오른쪽 위 자리에 있다. 같은 모양을 좌우로만 옮겨, 원래 칸의
+    오른쪽 끝에서 떨어져 있던 만큼 왼쪽 끝에서 떨어지게 한다. 일본어 글꼴은 띄어 쓰는 ゛ ゜ 를
+    칸 왼쪽 위에 그려서, 앞 글자 오른쪽 위에 붙어 보이게 한다.
+    """
+    made = {}
+    for cp, src in SPACING_MARKS.items():
+        mark, advance, _ = combining[src]
+        pen = BoundsPen(None)
+        mark.draw(pen)
+        x0, _, x1, _ = pen.bounds
+        made[cp] = (Moved(mark, Transform(1, 0, 0, 1, (advance - x1) - x0, 0)), advance, f"uni{cp:04X}")
+    return made
 
 
 def add_nfd_substitutions(font):
@@ -854,9 +909,12 @@ def main():
     sources = {cp: (dglyphs[name], centered(dhmtx[name][0]), wide, name)
                for cp, name in targets.items() if name in dhmtx.metrics}
     skipped = len(targets) - len(sources)
-    for cp, (drawing, advance, name) in voiced_kana(dglyphs, dcmap, dhmtx).items():
-        sources[cp] = (drawing, centered(advance), wide, name)
-    for cp, (drawing, advance, name) in combining_kana(dglyphs, dcmap, dhmtx).items():
+    combining = combining_kana(dglyphs, dcmap, dhmtx)
+    made = voiced_kana(dglyphs, dcmap, dhmtx) | small_kana(dglyphs, dcmap, dhmtx) | spacing_marks(combining)
+    for cp, (drawing, advance, name) in made.items():
+        if cp not in dcmap:
+            sources[cp] = (drawing, centered(advance), wide, name)
+    for cp, (drawing, advance, name) in combining.items():
         tf = centered(advance)
         # 결합점의 advance 는 0. 현재 펜 위치에서 직전의 두 칸으로 돌아가 놓는다.
         sources[cp] = (drawing, Transform(tf.xx, tf.xy, tf.yx, tf.yy, tf.dx - wide, tf.dy), 0, name)
