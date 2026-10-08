@@ -69,14 +69,14 @@ Linux GUI 프로그램에 쓸 때만 위 Linux 설치 방법을 따라요.
 
 | 굵기 | `style` | 파일 | 라틴 세로획 | 한글 세로획 |
 | --- | --- | --- | --- | --- |
-| Thin | `Thin` / `Thin Italic` | `JetBatangNF-Thin`, `-ThinItalic` | 50 | 46 |
-| ExtraLight | `ExtraLight` / `ExtraLight Italic` | `JetBatangNF-ExtraLight`, `-ExtraLightItalic` | 66 | 61 |
-| Light | `Light` / `Light Italic` | `JetBatangNF-Light`, `-LightItalic` | 79 | 72 |
-| Regular | `Regular` / `Italic` | `JetBatangNF-Regular`, `-Italic` | 90 | 82 |
-| Medium | `Medium` / `Medium Italic` | `JetBatangNF-Medium`, `-MediumItalic` | 99 | 90 |
-| SemiBold | `SemiBold` / `SemiBold Italic` | `JetBatangNF-SemiBold`, `-SemiBoldItalic` | 108 | 100 |
-| Bold | `Bold` / `Bold Italic` | `JetBatangNF-Bold`, `-BoldItalic` | 125 | 118 |
-| ExtraBold | `ExtraBold` / `ExtraBold Italic` | `JetBatangNF-ExtraBold`, `-ExtraBoldItalic` | 150 | 138 |
+| Thin | `Thin` / `Thin Italic` | `JetBatangNF-Thin`, `-ThinItalic` | 50 | 45 |
+| ExtraLight | `ExtraLight` / `ExtraLight Italic` | `JetBatangNF-ExtraLight`, `-ExtraLightItalic` | 66 | 59 |
+| Light | `Light` / `Light Italic` | `JetBatangNF-Light`, `-LightItalic` | 79 | 71 |
+| Regular | `Regular` / `Italic` | `JetBatangNF-Regular`, `-Italic` | 90 | 81 |
+| Medium | `Medium` / `Medium Italic` | `JetBatangNF-Medium`, `-MediumItalic` | 99 | 89 |
+| SemiBold | `SemiBold` / `SemiBold Italic` | `JetBatangNF-SemiBold`, `-SemiBoldItalic` | 108 | 99 |
+| Bold | `Bold` / `Bold Italic` | `JetBatangNF-Bold`, `-BoldItalic` | 125 | 117 |
+| ExtraBold | `ExtraBold` / `ExtraBold Italic` | `JetBatangNF-ExtraBold`, `-ExtraBoldItalic` | 150 | 137 |
 
 표의 세로획 값은 1000 upem 기준으로 `한` 의 세로획을 잰 거예요.
 
@@ -98,11 +98,11 @@ Regular·Italic·Bold·Bold Italic 네 칸만 있는 앱에서는 아래 가족 
 예를 들어 Medium 이 목록에서 따로 뜨는 앱에는 `JetBatang NF Medium` 을 넣어요.
 굵기를 따로 고르는 앱에서는 `JetBatang NF` 와 Medium 을 고르면 돼요.
 
-RIDIBatang 은 세로획 82 짜리 한 굵기밖에 없어요. 그래서 한글 세로획이 같은 굵기 라틴의 0.91 배쯤
-(Regular 의 82 : 90) 되도록 굵기마다 한글 획을 불리거나 깎아요. Medium 부터는 한글 외곽선을 여덟
+RIDIBatang 은 세로획 81 짜리 한 굵기밖에 없어요. 그래서 한글 세로획이 같은 굵기 라틴의 0.9 배쯤
+(Regular 의 81 : 90) 되도록 굵기마다 한글 획을 불리거나 깎아요. Medium 부터는 한글 외곽선을 여덟
 방향으로 겹쳐 획을 불린 다음, 겹친 외곽선을 하나로 합쳐요. Light 부터 가는 쪽은 여덟 방향으로 옮긴
 외곽선이 모두 겹치는 곳만 남겨 획을 깎아요. 양은 가로 방향을 기준으로 잡고, 세로 방향은 불릴 때
-0.4 배, 깎을 때 0.8 배를 줘요. RIDIBatang 은 가로획(67)과 세로획(82)의 차이가 작아서, 가로획을
+0.4 배, 깎을 때 0.8 배를 줘요. RIDIBatang 은 가로획(67)과 세로획(81)의 차이가 작아서, 가로획을
 덜 깎으면 Thin 에서 가로획이 세로획보다 굵어져요. 깎다가 가는 획이 끊기거나 사라지는 `㎡ 『 ぁ`
 같은 글자는 덜 깎아요.
 

@@ -20,8 +20,8 @@ JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
 # 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량
 #
-# RIDIBatang 은 세로획 82 짜리 한 굵기뿐이다. Regular 를 기준으로 삼고, 한글 세로획이
-# 같은 굵기 라틴 세로획의 0.91 배(Regular 의 82 : 90)쯤 되게 한글 가로 굵기를 불리거나
+# RIDIBatang 은 세로획 81 짜리 한 굵기뿐이다. Regular 를 기준으로 삼고, 한글 세로획이
+# 같은 굵기 라틴 세로획의 0.9 배(Regular 의 81 : 90)쯤 되게 한글 가로 굵기를 불리거나
 # 깎는다(음수). 세로는 불릴 때 그 0.4 배, 깎을 때 0.8 배다.
 #   라틴 세로획: Thin 50 / ExtraLight 66 / Light 79 / Regular 90
 #                Medium 99 / SemiBold 108 / Bold 125 / ExtraBold 150
