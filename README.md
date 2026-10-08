@@ -69,9 +69,9 @@ Linux GUI 프로그램에 쓸 때만 위 Linux 설치 방법을 따라요.
 
 | 굵기 | `style` | 파일 | 라틴 세로획 | 한글 세로획 |
 | --- | --- | --- | --- | --- |
-| Thin | `Thin` / `Thin Italic` | `JetBatangNF-Thin`, `-ThinItalic` | 50 | 82 |
-| ExtraLight | `ExtraLight` / `ExtraLight Italic` | `JetBatangNF-ExtraLight`, `-ExtraLightItalic` | 66 | 82 |
-| Light | `Light` / `Light Italic` | `JetBatangNF-Light`, `-LightItalic` | 79 | 82 |
+| Thin | `Thin` / `Thin Italic` | `JetBatangNF-Thin`, `-ThinItalic` | 50 | 46 |
+| ExtraLight | `ExtraLight` / `ExtraLight Italic` | `JetBatangNF-ExtraLight`, `-ExtraLightItalic` | 66 | 61 |
+| Light | `Light` / `Light Italic` | `JetBatangNF-Light`, `-LightItalic` | 79 | 72 |
 | Regular | `Regular` / `Italic` | `JetBatangNF-Regular`, `-Italic` | 90 | 82 |
 | Medium | `Medium` / `Medium Italic` | `JetBatangNF-Medium`, `-MediumItalic` | 99 | 90 |
 | SemiBold | `SemiBold` / `SemiBold Italic` | `JetBatangNF-SemiBold`, `-SemiBoldItalic` | 108 | 100 |
@@ -98,9 +98,13 @@ Regular·Italic·Bold·Bold Italic 네 칸만 있는 앱에서는 아래 가족 
 예를 들어 Medium 이 목록에서 따로 뜨는 앱에는 `JetBatang NF Medium` 을 넣어요.
 굵기를 따로 고르는 앱에서는 `JetBatang NF` 와 Medium 을 고르면 돼요.
 
-RIDIBatang 은 세로획 80 짜리 한 굵기밖에 없어요. 그래서 Regular 이하는 한글을 그대로 두고
-라틴만 가늘어져요. Medium 부터는 한글 외곽선을 여덟 방향으로 겹쳐 획을 불린 다음,
-겹친 외곽선을 하나로 합쳐요. 불리는 양은 가로 방향을 기준으로 잡고, 세로 방향은 그 0.4 배만 줘요.
+RIDIBatang 은 세로획 82 짜리 한 굵기밖에 없어요. 그래서 한글 세로획이 같은 굵기 라틴의 0.91 배쯤
+(Regular 의 82 : 90) 되도록 굵기마다 한글 획을 불리거나 깎아요. Medium 부터는 한글 외곽선을 여덟
+방향으로 겹쳐 획을 불린 다음, 겹친 외곽선을 하나로 합쳐요. Light 부터 가는 쪽은 여덟 방향으로 옮긴
+외곽선이 모두 겹치는 곳만 남겨 획을 깎아요. 양은 가로 방향을 기준으로 잡고, 세로 방향은 불릴 때
+0.4 배, 깎을 때 0.8 배를 줘요. RIDIBatang 은 가로획(67)과 세로획(82)의 차이가 작아서, 가로획을
+덜 깎으면 Thin 에서 가로획이 세로획보다 굵어져요. 깎다가 가는 획이 끊기거나 사라지는 `㎡ 『 ぁ`
+같은 글자는 덜 깎아요.
 
 ## COVERAGE
 
@@ -129,9 +133,9 @@ RIDIBatang 에는 장음부호 `ー`(`U+30FC`) 가 없어요. 그대로 두면 `
 `₩ ℃ ℉` 와 로마 숫자 `Ⅰ`–`Ⅹ` `ⅰ`–`ⅹ` 는 터미널이 1칸으로 세는데 베이스에 없어요. RIDIBatang 것을
 베이스 대문자 높이로 키워 `W` 자리 가운데에 넣고, `W` 보다 넓은 `₩ ℃ Ⅷ` 같은 글자는 가로만 줄여요.
 한글처럼 올려 앉히지 않고 기준선에 맞춰서 `25℃` `Ⅳ.` 가 숫자·마침표와 나란해요. `build.py` 의 `NARROW` 에 있어요.
-굵은 판에서는 가로로 줄인 비율만큼 굵기 증가량도 줄여요. 원래 폭에서 굵게 한 다음 가로로 줄인 것과
-같은 모양이라, ExtraBold 에서도 `Ⅷ` 의 획 다섯이 붙지 않아요. 그 대신 줄인 글자의 세로획은 같은
-굵기의 라틴보다 조금 가늘어요.
+굵기를 바꿀 때는 가로로 줄인 비율만큼 덜 불리거나 덜 깎아요. 원래 폭에서 굵기를 바꾼 다음 가로로
+줄인 것과 같은 모양이라, ExtraBold 에서도 `Ⅷ` 의 획 다섯이 붙지 않아요. 그 대신 줄인 글자의 세로획은
+같은 굵기의 라틴보다 조금 가늘어요. 가는 판에서는 깎기 전 잉크를 `W` 자리에 맞춰서, 깎은 만큼 조금 좁아요.
 
 한국어 문서에 자주 나오는 `※ ① ★ ⑴ ⓐ ⅓ ‥` 같은 KS X 1001 기호는 폭이 애매해서, 터미널이 기본값으로
 1칸에 세요. 베이스에 없는 것은 RIDIBatang 에서 가져와 1칸 가운데에 베이스 `○` 크기로 줄여 넣어요.
@@ -139,6 +143,10 @@ RIDIBatang 에는 장음부호 `ー`(`U+30FC`) 가 없어요. 그대로 두면 `
 터미널에서 애매한 폭을 2칸으로 세게 바꿨다면 왼쪽 칸에 그려져요. `build.py` 의 `ksx1001_symbols` 가
 골라요. 옴 기호(`U+2126`)·옹스트롬 기호(`U+212B`)·`―`(`U+2015`) 는 베이스의 `Ω` `Å` `—` 를 그대로
 써요. `BASE_ALIASES` 에 있어요.
+굵은 판에서는 줄인 비율만큼 덜 불려요. 그래도 `⑫` 의 숫자가 원에 붙거나 `⑧` 의 속공간이 막히면
+더 덜 불려서, 획이 서로 붙지 않고 속공간 수가 Regular 와 같아요. `⑬ ⒀` 은 ExtraBold 에서 조금만
+불려도 숫자가 원에 붙어서 Regular 굵기 그대로예요. 가는 판에서는 깎지 않아요. 줄여 넣어
+획이 이미 Light 라틴보다 가늘어서, 한글만큼 깎으면 Thin 에서 `①` 의 원이 거의 사라져요.
 
 탁음 가나 `ゔ ヷ ヸ ヹ ヺ` 도 RIDIBatang 에 없어요. `ヴ` 에서 탁점 두 획을 떼어 `う ワ ヰ ヱ ヲ` 에
 얹어 만들어요. 탁점 자리를 내려고 청음 글자를 `ヴ` 가 `ウ` 를 옮긴 만큼 옮겨요. `build.py` 의 `VOICED` 에 있어요.
@@ -155,8 +163,8 @@ NFD 를 지원하고, 호환 자모 `ㄱㅏ` 는 조합하지 않아요. 원본�
 ## LIMITATIONS
 
 - 13px 아래에서는 굵은 쪽 한글의 속공간이 메워져요. `뷁` 같은 글자부터 뭉개지기 시작해요.
-- Thin·ExtraLight·Light 의 한글·가나는 Regular 와 같은 굵기예요. RIDIBatang 은 한 굵기뿐이라 획을
-  불릴 수는 있어도 깎을 수는 없어요.
+- 가는 판에서 `퐪` `뛌` `챟` `㎯` 처럼 획이 아주 가늘게 이어진 글자 열네~열여덟 자는 조금만 깎아도
+  획이 끊기거나 속공간이 터져서 Regular 굵기 그대로예요.
 - 한자가 없어요. 원본인 RIDIBatang 에 한자 글리프가 없어서예요.
 - 가나 중 `ゕ ゖ ゛ ゜ ゝ ゞ ヽ ヾ` 등 열세 자가 빠져 있어요.
 - 옛한글 자모는 지원하지 않아요. NFD 조합에는 OpenType 조합을 처리하는 렌더러가 필요해요.
@@ -183,6 +191,7 @@ VERSION=1.5.0 ./build.sh
 
 결과는 `fonts/JetBatangNF-*.ttf` 열여섯 개예요. 빌드한 다음 아래 명령으로 회귀 검사를 돌려요.
 `uharfbuzz` 는 검사에서 NFD 문자열을 실제로 조합하는 데 쓰고, 글꼴 빌드에는 필요하지 않아요.
+굵기 검사는 기본값으로 빌드했다고 보고 재요. `EMBOLDEN_SCALE` 같은 빌드 값을 바꾸면 실패할 수 있어요.
 
 ```sh
 pip install uharfbuzz
@@ -193,7 +202,7 @@ python3 -m unittest discover tests
 
 ```sh
 VERSION=1.5.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로
-VERSION=1.5.0 EMBOLDEN_SCALE=1.25 ./build.sh     # 한글 굵기 증가량을 25% 더
+VERSION=1.5.0 EMBOLDEN_SCALE=1.25 ./build.sh     # 한글 굵기 증가량(가는 판은 깎는 양)을 25% 더
 VERSION=1.5.0 FAMILY="MyBatang NF" ./build.sh    # 글꼴 이름 바꾸기
 
 # 바탕 Nerd Font (기본값)

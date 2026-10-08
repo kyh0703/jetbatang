@@ -118,10 +118,11 @@ def font_revision(version):
 
 
 def embolden_ring(ex, ey):
-    """굵기를 더할 방향 8 개를 (dx, dy) 목록으로 준다.
+    """굵기를 바꿀 방향 8 개를 (dx, dy) 목록으로 준다.
 
     같은 외곽선을 이 방향으로 조금씩 옮겨 겹쳐 놓으면 TrueType 의 nonzero
     winding 규칙이 합집합으로 칠해준다. 경계 연산(boolean op) 없이 획이 두꺼워진다.
+    반대로 모두 겹치는 곳만 남기면(thin_copies) 획이 가늘어진다.
     """
     rx, ry = ex / 2.0, ey / 2.0
     d = math.sqrt(0.5)
@@ -371,8 +372,9 @@ def fit_cell(dglyphs, dcmap, bglyphs, bcmap, shear, ex):
         return ex * min(1.0, sx / sy)
 
     def inked(name, sx):
-        """굵기를 불린 뒤의 잉크 폭."""
-        return span(name, sx)[1] + grow(sx)
+        """굵기를 불린 뒤의 잉크 폭. 깎을 때는 깎기 전 잉크로 맞춘다. 가는 획이 끊겨 덜 깎여도
+        W 를 넘지 않는다."""
+        return span(name, sx)[1] + max(grow(sx), 0.0)
 
     fits = {}
     for cp in NARROW:
@@ -417,11 +419,11 @@ def stacked(glyph, offsets):
 
 def by_simplify(glyph, offsets):
     stack = stacked(glyph, offsets)
-    return pathops.simplify(stack, clockwise=stack.clockwise)
+    return pathops.simplify(stack, clockwise=True)
 
 
 def by_opbuilder(glyph, offsets):
-    builder = pathops.OpBuilder(fix_winding=True, keep_starting_points=False)
+    builder = pathops.OpBuilder(fix_winding=True, keep_starting_points=False, clockwise=True)
     for copy in shifted_copies(glyph, offsets):
         builder.add(copy, pathops.PathOp.UNION)
     return builder.resolve()
@@ -456,7 +458,7 @@ def unions(glyph, offsets):
 
 
 def agreed(paths):
-    """두 합집합이 모두 있고 칠해지는 넓이가 같으면 그 하나, 아니면 None."""
+    """두 경계 연산 결과가 모두 있고 칠해지는 넓이가 같으면 그 하나, 아니면 None."""
     if len(paths) < 2:
         return None
     a, b = ink(paths[0]), ink(paths[1])
@@ -465,14 +467,15 @@ def agreed(paths):
     return paths[0]
 
 
-# 합친 외곽선과 겹친 복사본이 칠하는 영역이 칠해진 넓이 대비 이만큼 넘게 어긋나면 틀린 것이다.
-# 곡선을 꺾은선으로 펴며 생기는 차이는 5e-5 안쪽이고, 속공간을 먹은 결과는 5e-4 넘게 어긋난다.
+# 경계 연산 결과와 정답이 칠하는 영역이 칠해진 넓이 대비 이만큼 넘게 어긋나면 틀린 것이다.
+# 곡선을 꺾은선으로 펴며 생기는 차이는 5e-5 안쪽이고, 속공간을 먹은 합집합은 5e-4 넘게 어긋난다.
 COVER_TOL = 2e-4
 
 
 class EdgePen(BasePen):
-    """외곽선을 꺾은선으로 펴서 (x0, y0, x1, y1) 선분으로 모은다."""
-    STEPS = 32
+    """외곽선을 꺾은선으로 펴서 (x0, y0, x1, y1) 선분으로 모은다. 곡선 하나를 STEPS 토막으로 편다.
+    32 토막이면 곡선이 많은 ち 를 깎은 결과에서 꺾은선 차이만 2e-4 를 넘는다."""
+    STEPS = 128
 
     def __init__(self):
         super().__init__(None)
@@ -536,18 +539,27 @@ def painted(rows):
     return sum(x1 - x0 for spans in rows.values() for x0, x1 in spans)
 
 
-def mismatch(a, b):
-    """두 coverage 가운데 한쪽만 칠하는 넓이."""
-    both = 0.0
+def overlap(a, b):
+    """두 coverage 가 함께 칠하는 구간."""
+    rows = {}
     for r in a.keys() & b.keys():
-        p, q, i, j = a[r], b[r], 0, 0
+        p, q, i, j, spans = a[r], b[r], 0, 0, []
         while i < len(p) and j < len(q):
-            both += max(0.0, min(p[i][1], q[j][1]) - max(p[i][0], q[j][0]))
+            lo, hi = max(p[i][0], q[j][0]), min(p[i][1], q[j][1])
+            if lo < hi:
+                spans.append((lo, hi))
             if p[i][1] < q[j][1]:
                 i += 1
             else:
                 j += 1
-    return painted(a) + painted(b) - 2 * both
+        if spans:
+            rows[r] = spans
+    return rows
+
+
+def mismatch(a, b):
+    """두 coverage 가운데 한쪽만 칠하는 넓이."""
+    return painted(a) + painted(b) - 2 * painted(overlap(a, b))
 
 
 def painted_like_stack(glyph, offsets, paths):
@@ -560,8 +572,8 @@ def painted_like_stack(glyph, offsets, paths):
     return None
 
 
-def merge_copies(glyph, offsets):
-    """겹쳐 놓은 복사본들을 외곽선 하나로 합친다. 못 믿을 결과면 None.
+def union_path(glyph, offsets):
+    """겹쳐 놓은 복사본들의 합집합 경로. 못 믿을 결과면 None.
 
     skia 의 경계 연산은 이런 입력 — 같은 외곽선을 평행 이동한 복사본들 — 에서
     가로·세로 직선이 collinear 로 만나면 드물게 예외도 없이 속공간을 먹어 버린다.
@@ -572,7 +584,7 @@ def merge_copies(glyph, offsets):
     그래도 어긋나면 겹친 복사본을 nonzero 규칙으로 직접 칠해 보고, 처음 구한 두
     합집합 가운데 그와 같게 칠해지는 쪽을 쓴다. 느려서 마지막에만 한다. 복사본을
     한 쌍씩 합치는 세 번째 경계 연산은 OpBuilder 와 같이 틀려서(Bold 휑,
-    ExtraBold Italic ｓ) 다수결에 쓸 수 없다. 맞는 쪽이 없으면 겹친 채로 둔다.
+    ExtraBold Italic ｓ) 다수결에 쓸 수 없다.
     """
     first = unions(glyph, offsets)
     picked = agreed(first)
@@ -580,12 +592,142 @@ def merge_copies(glyph, offsets):
         picked = agreed(unions(glyph, nudge(offsets)))
     if picked is None:
         picked = painted_like_stack(glyph, offsets, first)
-    if picked is None:
-        return None
+    return picked
+
+
+def to_glyph(path):
     ttpen = TTGlyphPen(None)
-    picked.draw(ttpen)
-    merged = ttpen.glyph()
-    return merged if merged.numberOfContours else None
+    path.draw(ttpen)
+    glyph = ttpen.glyph()
+    return glyph if glyph.numberOfContours else None
+
+
+def merge_copies(glyph, offsets):
+    """겹쳐 놓은 복사본들을 외곽선 하나로 합친다. 못 믿을 결과면 None 이고, 그러면 겹친 채로 둔다."""
+    path = union_path(glyph, offsets)
+    return None if path is None else to_glyph(path)
+
+
+def topology(path):
+    """(바깥 외곽선 수, 속공간 수). 가는 획이 끊기거나 획 사이가 터지면 달라진다."""
+    contours = list(pathops.simplify(path, clockwise=True).contours)
+    outer = sum(c.clockwise for c in contours)
+    return outer, len(contours) - outer
+
+
+def by_intersection(path, offsets):
+    thin = None
+    for ox, oy in offsets:
+        copy = pathops.Path(path).transform(1, 0, 0, 1, ox, oy)
+        thin = copy if thin is None else pathops.op(thin, copy, pathops.PathOp.INTERSECTION,
+                                                     clockwise=True)
+    return thin
+
+
+def rectangle(x0, y0, x1, y1):
+    rect = pathops.Path()
+    rect.moveTo(x0, y0)
+    rect.lineTo(x0, y1)
+    rect.lineTo(x1, y1)
+    rect.lineTo(x1, y0)
+    rect.close()
+    return rect
+
+
+def by_complement(path, offsets):
+    """바깥(넉넉한 상자에서 글자를 뺀 곳)을 불린 만큼 상자에서 뺀다. 교집합과 같은 답을
+    경계 연산 한 번과 nonzero 합집합 한 번으로 구한다. 상자 가장자리는 옮긴 거리보다 바깥이라
+    결과에 닿지 않는다."""
+    clean = pathops.simplify(path, clockwise=True)
+    m = max(max(abs(ox), abs(oy)) for ox, oy in offsets) + 2
+    x0, y0, x1, y1 = clean.bounds
+    box = rectangle(x0 - 2 * m, y0 - 2 * m, x1 + 2 * m, y1 + 2 * m)
+    if not box.clockwise:
+        box.reverse()
+    clean.reverse()     # 상자와 방향이 반대인 외곽선을 겹치면 글자 자리가 비어 바깥만 칠해진다
+    stack = pathops.Path()
+    for ox, oy in offsets:
+        stack.addPath(box.transform(1, 0, 0, 1, ox, oy))
+        stack.addPath(clean.transform(1, 0, 0, 1, ox, oy))
+    outside = pathops.simplify(stack, clockwise=True)
+    return pathops.op(rectangle(x0 - m, y0 - m, x1 + m, y1 + m), outside,
+                      pathops.PathOp.DIFFERENCE, clockwise=True)
+
+
+def shifted(rows, ox, oy):
+    """coverage 를 정수 (ox, oy) 만큼 옮긴다. 줄은 정수 높이마다 재므로 그대로 옮겨진다."""
+    return {r + oy: [(x0 + ox, x1 + ox) for x0, x1 in spans] for r, spans in rows.items()}
+
+
+def thin_copies(glyph, offsets):
+    """복사본이 모두 겹치는 곳만 남겨 획을 깎은 경로. 못 믿을 결과면 None. offsets 는 정수여야
+    한다. 정답을 칠할 때 원래 외곽선의 줄을 그대로 옮겨 쓴다.
+
+    union_path 의 반대다. 같은 외곽선을 사방으로 옮긴 복사본의 교집합은 옮긴 거리만큼
+    획을 양쪽에서 깎는다. 원래 자리의 외곽선도 함께 겹친다. 여덟 방향 복사본만 겹치면
+    비스듬하고 좁은 틈은 여덟 복사본이 모두 잉크라서 틈 안이 칠해진다(Thin 의 れ ね).
+    skia 의 경계 연산은 교집합에서도 조용히 틀려서(LightItalic 의 책), 알고리즘이 다른 두
+    경로로 구해 칠해지는 넓이가 같을 때만 믿는다. 어긋나면 원래 외곽선을 직접 칠한 구간을
+    옮겨 가며 겹친 정답과 같게 칠해지는 쪽을 쓴다.
+    """
+    offsets = sorted({(0, 0), *offsets})
+    path = glyph_path(glyph)
+    results = []
+    for thin in (by_intersection, by_complement):
+        try:
+            results.append(thin(path, offsets))
+        except pathops.PathOpsError:
+            pass
+    picked = agreed(results)
+    if picked is not None:
+        return picked
+    source = coverage(path)
+    truth = None
+    for ox, oy in offsets:
+        moved = shifted(source, ox, oy)
+        truth = moved if truth is None else overlap(truth, moved)
+    limit = painted(truth) * COVER_TOL
+    for result in results:
+        if mismatch(truth, coverage(result)) <= limit:
+            return result
+    return None
+
+
+def glyph_path(glyph):
+    path = pathops.Path()
+    glyph.draw(path.getPen(glyphSet=None), None)
+    return path
+
+
+def shape_of(glyph):
+    """glyph 의 topology. 못 구하면 None. 경계 연산이 내놓은 경로가 아니라 저장할 글리프로 본다.
+    TTGlyphPen 이 좌표를 정수로 반올림하며 반 단위보다 좁은 틈을 메워서, 반올림 전 경로로 보면
+    Bold ⓠ 의 꼬리가 원에 붙는 것을 놓친다."""
+    try:
+        return topology(glyph_path(glyph))
+    except pathops.PathOpsError:
+        return None
+
+
+# 굵기를 바꾸다 모양이 바뀌는 글자는 이 비율로 덜 바꿔 본다. Thin 에서는 ㎡ 『 의 가는 획이
+# 사라지고, Bold 에서는 1칸으로 줄인 ⑫ 의 숫자가 원에 붙는다. 끝까지 안 되면 그대로 둔다.
+REWEIGH_STEPS = (1.0, 0.75, 0.5, 0.25)
+
+
+def reweigh(glyph, gx, gy):
+    """획을 가로 gx, 세로 gy 만큼 불리거나(양수) 깎아(음수) 외곽선 하나로 만든 글리프와 실제로
+    바꾼 비율. 가는 획이 끊기거나 사라지고, 획이 서로 붙거나 속공간이 막혀 바깥 외곽선이나
+    속공간 수가 바뀌면 덜 바꿔 본다. 끝까지 안 되면 (None, 0)."""
+    shape = shape_of(glyph)
+    if shape is None:
+        return None, 0.0
+    for step in REWEIGH_STEPS:
+        ring = embolden_ring(abs(gx) * step, abs(gy) * step)
+        result = union_path(glyph, ring) if gx > 0 or gy > 0 else thin_copies(glyph, ring)
+        reweighed = None if result is None else to_glyph(result)
+        if reweighed is not None and shape_of(reweighed) == shape:
+            return reweighed, step
+    return None, 0.0
 
 
 def legacy_names(family, style):
@@ -632,12 +774,15 @@ def main():
     ap.add_argument("--shear-pivot", type=float, default=0.325,
                     help="기울임 회전축 높이(em 비율). 한글 세로 중앙")
     ap.add_argument("--embolden", type=float, default=0.0,
-                    help="한글 가로 굵기 증가량(base 단위). RIDIBatang 은 한 굵기뿐이라 Bold 는 이걸로 만든다")
+                    help="한글 가로 굵기 증가량(base 단위). 음수면 그만큼 깎는다. RIDIBatang 은 "
+                         "한 굵기뿐이라 다른 굵기는 이걸로 만든다")
     ap.add_argument("--embolden-y", type=float, default=None,
-                    help="한글 세로 굵기 증가량. 생략하면 --embolden 의 0.4 배. "
-                         "명조 Bold 는 세로획이 주로 굵어지지만 가로획을 그대로 두면 저해상도에서 "
+                    help="한글 세로 굵기 증가량. 생략하면 --embolden 이 양수일 때 0.4 배, 음수일 때 "
+                         "0.8 배. 명조 Bold 는 세로획이 주로 굵어지지만 가로획을 그대로 두면 저해상도에서 "
                          "세로획만 진하고 가로획은 흐려 얼룩져 보인다. 가로획이 겹겹이 쌓이는 "
-                         "글자(능·동·닙)의 속공간이 메워지지 않는 선에서 절반 조금 못 되게 준다")
+                         "글자(능·동·닙)의 속공간이 메워지지 않는 선에서 절반 조금 못 되게 준다. "
+                         "깎을 때는 RIDIBatang 의 가로획 67 과 세로획 82 의 비율대로 깎는다. "
+                         "0.4 배만 깎으면 Thin 에서 가로획이 세로획보다 굵어진다")
     ap.add_argument("--max-err", type=float, default=0.001,
                     help="곡선 변환 허용오차(em 비율)")
     args = ap.parse_args()
@@ -658,7 +803,10 @@ def main():
     pivot = args.shear_pivot * upem
 
     ex = args.embolden
-    ey = args.embolden_y if args.embolden_y is not None else ex * 0.4
+    ey = args.embolden_y if args.embolden_y is not None else ex * (0.4 if ex > 0 else 0.8)
+    if ex * ey < 0:
+        ap.error("--embolden 과 --embolden-y 는 부호가 같아야 해요")
+    thinner = ex < 0 or ey < 0
     offsets = embolden_ring(ex, ey) if (ex > 0 or ey > 0) else []
 
     shear = 0.0
@@ -723,26 +871,32 @@ def main():
         x0, _, x1, _ = bounds(bglyphs, bcmap[0x25CB])
         limit = x1 - x0
     x0, _, x1, _ = bounds(dglyphs, dcmap[0x25CB])
-    ring = limit / (x1 - x0)
+    circle = limit / (x1 - x0)
     dmid = (donor["hhea"].ascent + donor["hhea"].descent) / 2.0     # donor 전각 틀의 세로 가운데
 
     def in_cell(name):
-        """donor 기호를 base 1칸 가운데에 줄여 놓는다. 2칸에 놓을 때와 세로 가운데가 같아서
+        """donor 기호를 base 1칸 가운데에 줄여 놓는 (변환, 배율). 2칸에 놓을 때와 세로 가운데가 같아서
         ① 과 ㉠ 이 한 줄에 나란하다. 가로는 잉크 가운데를 맞춘다. ☜ ☞ ∝ ℡ 처럼 전각 틀의 한쪽으로
         쏠린 기호를 틀째 가운데에 두면 base ○ 보다 옆 칸을 더 덮는다."""
         x0, _, x1, _ = bounds(dglyphs, name)
-        k = min(ring, (limit - ex) / (x1 - x0))
-        return Transform(k, 0, 0, k, (cell - (x0 + x1) * k) / 2.0, (scale - k) * dmid + args.yshift)
+        k = min(circle, limit / (x1 - x0 + max(ex, 0.0)))
+        return Transform(k, 0, 0, k, (cell - (x0 + x1) * k) / 2.0, (scale - k) * dmid + args.yshift), k
 
+    # 기본(ex, ey)과 다른 굵기 증가량으로 불리는 글자. 줄여 넣는 글자는 줄인 비율만큼 덜 불린다.
+    # 원래 크기에서 굵게 한 다음 줄인 것과 같은 모양이라, 0.6 배로 좁아진 ⑧ ⓐ 의 속공간이 덜 막힌다.
+    grows = {}
+    symbols = set()
     for cp in ksx1001_symbols(bcmap):
         if cp in dcmap:
-            sources[cp] = (dglyphs[dcmap[cp]], in_cell(dcmap[cp]), cell, dcmap[cp])
-    rings = {}      # 기본과 다른 굵기 증가량으로 불리는 글자의 offsets
+            tf, k = in_cell(dcmap[cp])
+            sources[cp] = (dglyphs[dcmap[cp]], tf, cell, dcmap[cp])
+            grows[cp] = (ex * k, ey * k)
+            symbols.add(cp)
     for cp, (tf, grow) in fit_cell(dglyphs, dcmap, bglyphs, bcmap, shear, ex).items():
         sources[cp] = (dglyphs[dcmap[cp]], tf, cell, dcmap[cp])
-        if offsets:
-            rings[cp] = embolden_ring(grow, ey)
+        grows[cp] = (grow, ey)
 
+    reshaped, partly, kept = 0, [], []
     for cp in sorted(sources):
         drawing, tf, advance, dname = sources[cp]
 
@@ -754,19 +908,41 @@ def main():
             continue
 
         gname = unique_name(dname)
+        gx, gy = grows.get(cp, (ex, ey))
 
-        ring = rings.get(cp, offsets)
-        if ring and glyph.numberOfContours:
+        # 깎을 때는 한글·가나 등, 불릴 때는 1칸 기호만 모양을 지키며 굵기를 바꾼다. 한글은 불리면
+        # ㅃ ㄳ 처럼 가까운 획이 붙는 게 자연스럽지만, 줄여 넣은 ⑫ 의 숫자가 원에 붙으면 읽을 수 없다.
+        # 1칸 기호는 0.6 배로 줄여 넣어 획이 이미 Light 라틴보다 가늘다(① 의 원 33). 한글만큼
+        # 깎으면 Thin 에서 원이 7 로 거의 사라져서 깎지 않는다.
+        if thinner:
+            reshape = cp not in symbols
+        else:
+            reshape = bool(offsets) and cp in symbols
+        if glyph.numberOfContours and reshape:
+            changed, step = reweigh(glyph, gx, gy)
+            if changed is None:
+                kept.append(chr(cp))
+            else:
+                glyph = changed
+                reshaped += 1
+                if step < 1:
+                    partly.append(chr(cp))
+        elif offsets and glyph.numberOfContours:
             # 원본 외곽선은 cmap 에 걸지 않는 글리프로 두고, 그것을 여러 번 겹쳐
             # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
             src = gname + ".src"
             taken.add(src)
             put(src, glyph, advance)
-            glyph = make_composite(src, ring)
+            glyph = make_composite(src, embolden_ring(gx, gy))
         put(gname, glyph, advance)
         added[cp] = gname
 
     print(f"  한글 등 {len(added)}자 추가, {skipped}자 건너뜀")
+    if thinner or offsets:
+        verb = "깎음" if thinner else "불림(1칸 기호)"
+        print(f"  모양을 지키며 {verb}: {reshaped}자"
+              + (f", 덜 바꿈: {''.join(partly)}" if partly else "")
+              + (f", 그대로 둠: {''.join(kept)}" if kept else ""))
 
     if offsets:
         # 겹쳐 놓은 composite 를 그대로 두면 macOS CoreText 가 겹친 가장자리마다
@@ -777,7 +953,7 @@ def main():
             if not glyf[name].isComposite():
                 continue
             src = name + ".src"
-            one = merge_copies(glyf[src], rings.get(cp, offsets))
+            one = merge_copies(glyf[src], embolden_ring(*grows.get(cp, (ex, ey))))
             if one is None:
                 failed.append(chr(cp))
                 continue

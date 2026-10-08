@@ -15,7 +15,7 @@ FOLDER, BRANCH, NODE, SEP = "", "", "", ""
 TS, PY, RS, DOCKER = "", "", "", ""
 CHECK, CROSS, WARN, BOLT = "", "", "", ""
 
-WEIGHTS = [("Thin", 0), ("ExtraLight", 0), ("Light", 0), ("Regular", 0),
+WEIGHTS = [("Thin", -36), ("ExtraLight", -22), ("Light", -10), ("Regular", 0),
            ("Medium", 9), ("SemiBold", 18), ("Bold", 36), ("ExtraBold", 56)]
 
 
@@ -47,7 +47,7 @@ def terminal():
 
 
 def weights():
-    """굵기 여덟 단계. Regular 아래로는 한글이 더 가늘어지지 않는 것도 같이 보인다."""
+    """굵기 여덟 단계. 한글 획을 라틴 굵기에 맞춰 불리거나 깎은 양을 같이 적는다."""
     S, ROW, W = 34, 54, 1180
     im, d = canvas(W, 44 + ROW * len(WEIGHTS))
     label, note = face("Regular", 19), face("Regular", 17)

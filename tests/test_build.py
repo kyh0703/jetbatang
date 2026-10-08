@@ -12,6 +12,7 @@ import pathops
 import uharfbuzz as hb
 from fontTools.misc.transform import Transform
 from fontTools.pens.boundsPen import BoundsPen
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 
 import build
@@ -61,6 +62,109 @@ def section(glyphs, name, y):
         else:
             spans.append([x0, x1])
     return spans
+
+
+def topology(glyphs, name):
+    """(바깥 외곽선 수, 속공간 수). 획이 서로 붙거나 속공간이 막히면 달라진다."""
+    path = pathops.Path()
+    glyphs[name].draw(path.getPen(glyphSet=glyphs))
+    contours = list(pathops.simplify(path, clockwise=True).contours)
+    outer = sum(c.clockwise for c in contours)
+    return outer, len(contours) - outer
+
+
+def one_cell_symbols(font, base):
+    """RIDIBatang 에서 가져와 1칸에 줄여 넣은 KS X 1001 기호."""
+    cmap = font.getBestCmap()
+    base_names, base_cmap = set(base.getGlyphOrder()), base.getBestCmap()
+    return [ch for ch in ksx1001() if ord(ch) in cmap and ord(ch) not in base_cmap
+            and cmap[ord(ch)] not in base_names and ch not in NARROW_SIGNS
+            and unicodedata.east_asian_width(ch) == "A"]
+
+
+def stem(glyphs, name, at):
+    """잉크 높이의 at 비율에서 자른 첫 획의 폭."""
+    _, y0, _, y1 = ink(glyphs, name)
+    x0, x1 = section(glyphs, name, y0 + (y1 - y0) * at)[0]
+    return x1 - x0
+
+
+@unittest.skipUnless(REGULAR.exists(), "fonts/JetBatangNF-Regular.ttf 가 없어요. ./build.sh 를 먼저 돌리세요")
+class WeightTest(unittest.TestCase):
+    def test_hangul_stems_follow_the_latin_weight(self):
+        # RIDIBatang 은 한 굵기뿐이라 굵기마다 획을 불리거나 깎는다. 한글이 같은 굵기의 라틴보다
+        # 눈에 띄게 굵거나 가늘면 섞어 쓴 줄이 얼룩져 보인다. Thin 라틴 옆에 Regular 굵기 한글을
+        # 두면 한글만 진하다. 한글 ㅣ 와 라틴 H 의 세로획 비율이 Regular 와 거의 같아야 한다.
+        def ratio(path):
+            font = TTFont(path)
+            cmap, glyphs = font.getBestCmap(), font.getGlyphSet()
+            return stem(glyphs, cmap[ord("ㅣ")], 0.5) / stem(glyphs, cmap[ord("H")], 0.25)
+
+        regular = ratio(REGULAR)
+        for path in BUILT:
+            with self.subTest(font=path.stem):
+                self.assertAlmostEqual(ratio(path), regular, delta=0.05)
+
+    def test_thin_faces_leave_few_syllables_at_regular_weight(self):
+        # 깎다가 획이 끊기는 글자만 Regular 굵기로 남는다. 경계 연산 라이브러리가 바뀌어 검증이
+        # 자꾸 실패하면 음절 수백 자가 Regular 굵기로 남아 Thin 문단이 얼룩지는데, ㅣ 하나만 재는
+        # 위 검사로는 모른다. README 는 굵기마다 열네~열여덟 자라고 적었다.
+        plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)} if ITALIC.exists() else {False: TTFont(REGULAR)}
+        for suffix in ("Thin", "ExtraLight", "Light", "ThinItalic", "ExtraLightItalic", "LightItalic"):
+            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            italic = suffix.endswith("Italic")
+            if not path.exists() or italic not in plain:
+                continue
+            font, reference = TTFont(path), plain[italic]
+            cmap, rcmap = font.getBestCmap(), reference.getBestCmap()
+            same = [chr(cp) for cp in range(0xAC00, 0xD7A4)
+                    if font["glyf"][cmap[cp]].coordinates == reference["glyf"][rcmap[cp]].coordinates]
+            with self.subTest(font=suffix):
+                self.assertLessEqual(len(same), 20, "".join(same))
+
+
+def polygon_glyph(*contours):
+    pen = TTGlyphPen(None)
+    for points in contours:
+        pen.moveTo(points[0])
+        for point in points[1:]:
+            pen.lineTo(point)
+        pen.closePath()
+    return pen.glyph()
+
+
+class ThinningTest(unittest.TestCase):
+    def test_thinning_moves_every_edge_inward_by_half_the_amount(self):
+        # 가로·세로 40 을 깎으면 획은 양쪽에서 20 씩 줄어든다. 300 정사각형의 바깥은 [20, 280],
+        # 가운데 100 정사각형 구멍은 [80, 220] 이 된다.
+        square = polygon_glyph([(0, 0), (0, 300), (300, 300), (300, 0)],
+                               [(100, 100), (200, 100), (200, 200), (100, 200)])
+        thin = build.thin_copies(square, build.embolden_ring(40, 40))
+        contours = sorted(thin.contours, key=lambda c: not c.clockwise)
+        self.assertEqual([c.clockwise for c in contours], [True, False])
+        for contour, box in zip(contours, [(20, 20, 280, 280), (80, 80, 220, 220)]):
+            for got, want in zip(contour.bounds, box):
+                self.assertAlmostEqual(got, want, delta=0.5)
+
+    def test_thinning_never_paints_outside_the_original(self):
+        # 여덟 방향 복사본만 겹치면 비스듬하고 좁은 틈은 여덟 복사본이 모두 잉크라서 틈 안이 칠해진다.
+        # Thin 의 れ ね 에서 22 단위² 씩 생겼다. 깎은 결과는 원래 글자 안에만 있어야 한다.
+        u = (0.4384, 0.8988)                  # 64°
+        n = (-u[1], u[0])
+        a, b = (200, 200), (200 + 400 * u[0], 200 + 400 * u[1])
+        slit = pathops.Path()
+        pen = slit.getPen()
+        pen.moveTo((a[0] + 3 * n[0], a[1] + 3 * n[1]))
+        pen.lineTo((b[0] + 3 * n[0], b[1] + 3 * n[1]))
+        pen.lineTo((b[0] - 3 * n[0], b[1] - 3 * n[1]))
+        pen.lineTo((a[0] - 3 * n[0], a[1] - 3 * n[1]))
+        pen.closePath()
+        square = polygon_glyph([(0, 0), (0, 400), (400, 400), (400, 0)])
+        notched = build.to_glyph(pathops.op(build.glyph_path(square), slit, pathops.PathOp.DIFFERENCE,
+                                            clockwise=True))
+        thin = build.thin_copies(notched, build.embolden_ring(36, 28.8))
+        outside = pathops.op(thin, build.glyph_path(notched), pathops.PathOp.DIFFERENCE)
+        self.assertLess(build.ink(outside), 1)
 
 
 @unittest.skipUnless(DONOR.exists(), "build/RIDIBatang.otf 가 없어요. ./build.sh 를 먼저 돌리세요")
@@ -176,14 +280,20 @@ class RegularTest(unittest.TestCase):
 
 @unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class NarrowSignTest(unittest.TestCase):
+    @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
     def test_one_cell_signs_take_the_box_of_w_on_the_baseline(self):
         # ₩ ℃ ℉ 과 로마 숫자는 터미널이 1칸으로 센다. 굵기·기울기마다 base W 가 차지하는 가로
         # 범위 가운데에 들고(넓은 글자는 그 범위를 채우고), 한글처럼 올려 앉히지 않아 숫자와
-        # 기준선이 같다.
+        # 기준선이 같다. Regular 보다 가는 굵기는 깎기 전에 W 범위에 맞춰서, 깎은 만큼만 좁다.
+        def hangul_stem(font):
+            return stem(font.getGlyphSet(), font.getBestCmap()[ord("ㅣ")], 0.5)
+
+        plain = {False: hangul_stem(TTFont(REGULAR)), True: hangul_stem(TTFont(ITALIC))}
         for path in BUILT:
             font = TTFont(path)
             cmap, glyphs, hmtx = font.getBestCmap(), font.getGlyphSet(), font["hmtx"]
             wx0, _, wx1, _ = ink(glyphs, cmap[ord("W")])
+            thinned = max(0.0, plain[path.stem.endswith("Italic")] - hangul_stem(font))
             for ch in NARROW_SIGNS:
                 with self.subTest(font=path.stem, ch=ch):
                     self.assertTrue(ord(ch) in cmap, f"{ch} 가 없다")
@@ -192,7 +302,7 @@ class NarrowSignTest(unittest.TestCase):
                     self.assertAlmostEqual((x0 + x1) / 2, (wx0 + wx1) / 2, delta=3)
                     self.assertLessEqual(x1 - x0, wx1 - wx0 + 3)
                     if ch in "₩℃℉Ⅷ":
-                        self.assertAlmostEqual(x1 - x0, wx1 - wx0, delta=3)
+                        self.assertGreaterEqual(x1 - x0, wx1 - wx0 - thinned - 3)
                     self.assertAlmostEqual(y0, 0, delta=20)
 
     @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
@@ -201,8 +311,8 @@ class NarrowSignTest(unittest.TestCase):
         # ExtraBold 에서 획 다섯이 둘로 붙고, Bold 에서도 검은 덩어리처럼 보인다. 가운데 높이에서
         # 자른 획 수가 Regular 와 같아야 한다. 또 획이 셋 이상 나란히 선 글자는 획 사이를 채운 비율이
         # 같은 굵기에서 그런 라틴 글자 가운데 가장 빽빽한 M·w 를 넘지 않아야 한다. 두 획짜리 Ⅴ·Ⅸ 는
-        # 비스듬히 잘린 획이 넓게 재져서 견주지 않는다. 가는 굵기는 한글처럼 Regular 굵기 그대로라
-        # Regular 만큼은 된다. 획 폭을 정수로 반올림해서 W 가 좁은 Thin 은 0.007 빽빽하게 나온다.
+        # 비스듬히 잘린 획이 넓게 재져서 견주지 않는다. 가는 굵기는 한글처럼 획을 깎아 Regular 보다
+        # 성기다.
         def cut(font, ch):
             cmap, glyphs = font.getBestCmap(), font.getGlyphSet()
             top = ink(glyphs, cmap[ord("x" if ch.islower() else "H")])[3]
@@ -250,17 +360,33 @@ class KoreanSymbolTest(unittest.TestCase):
             base = TTFont(base_path)
             font = TTFont(path)
             cmap, glyphs = font.getBestCmap(), font.getGlyphSet()
-            base_names, base_cmap = set(base.getGlyphOrder()), base.getBestCmap()
             r0, _, r1, _ = ink(glyphs, cmap[ord("○")])
-            drawn = [ch for ch in ksx1001() if ord(ch) in cmap and ord(ch) not in base_cmap
-                     and cmap[ord(ch)] not in base_names and ch not in NARROW_SIGNS
-                     and unicodedata.east_asian_width(ch) == "A"]
+            drawn = one_cell_symbols(font, base)
             self.assertGreaterEqual(len(drawn), 120)        # 153 자에서 라틴·NARROW·base 글자를 뺀 124 자
             for ch in drawn:
                 with self.subTest(font=path.stem, ch=ch):
                     x0, _, x1, _ = ink(glyphs, cmap[ord(ch)])
                     self.assertLessEqual(x1 - x0, r1 - r0 + 2)
                     self.assertAlmostEqual((x0 + x1) / 2, 300, delta=2)
+
+    @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
+    def test_one_cell_symbols_keep_their_counters_in_every_weight(self):
+        # 1칸 기호는 base ○ 크기로 0.6 배쯤 줄여 넣는다. 줄인 뒤에 한글과 같은 만큼 굵기를 불리면
+        # ExtraBold 에서 ⑧ ⓐ 의 속공간이 막히고 ⑫ 의 숫자가 원에 붙는다. 굵기마다 바깥 외곽선과
+        # 속공간 수가 같은 기울기의 Regular 와 같아야 한다.
+        plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)}
+        for path in BUILT:
+            base_path = ROOT / "build" / path.name.replace("JetBatangNF", "JetBrainsMonoNerdFontMono")
+            if not base_path.exists():
+                self.skipTest(f"{base_path.name} 가 없어요. ./build.sh 를 먼저 돌리세요")
+            font = TTFont(path)
+            reference = plain[path.stem.endswith("Italic")]
+            cmap, glyphs = font.getBestCmap(), font.getGlyphSet()
+            r_cmap, r_glyphs = reference.getBestCmap(), reference.getGlyphSet()
+            for ch in one_cell_symbols(font, TTFont(base_path)):
+                with self.subTest(font=path.stem, ch=ch):
+                    self.assertEqual(topology(glyphs, cmap[ord(ch)]),
+                                     topology(r_glyphs, r_cmap[ord(ch)]))
 
     @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
     def test_italic_leans_letters_but_keeps_symbols_upright(self):

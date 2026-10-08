@@ -18,18 +18,18 @@ EMBOLDEN_SCALE="${EMBOLDEN_SCALE:-1.0}"
 
 # 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량
 #
-# RIDIBatang 은 세로획 80 짜리 한 굵기뿐이다. Regular 를 기준으로 삼고,
-# 라틴 세로획이 Regular 보다 늘어난 만큼 한글 가로 굵기를 불린다(세로는 그 0.4 배).
-# Regular 보다 가는 쪽은 불릴 수 없어 0 이다.
+# RIDIBatang 은 세로획 82 짜리 한 굵기뿐이다. Regular 를 기준으로 삼고, 한글 세로획이
+# 같은 굵기 라틴 세로획의 0.91 배(Regular 의 82 : 90)쯤 되게 한글 가로 굵기를 불리거나
+# 깎는다(음수). 세로는 불릴 때 그 0.4 배, 깎을 때 0.8 배다.
 #   라틴 세로획: Thin 50 / ExtraLight 66 / Light 79 / Regular 90
 #                Medium 99 / SemiBold 108 / Bold 125 / ExtraBold 150
 VARIANTS=(
-  "Thin:Thin:0"
-  "ThinItalic:Thin Italic:0"
-  "ExtraLight:ExtraLight:0"
-  "ExtraLightItalic:ExtraLight Italic:0"
-  "Light:Light:0"
-  "LightItalic:Light Italic:0"
+  "Thin:Thin:-36"
+  "ThinItalic:Thin Italic:-36"
+  "ExtraLight:ExtraLight:-22"
+  "ExtraLightItalic:ExtraLight Italic:-22"
+  "Light:Light:-10"
+  "LightItalic:Light Italic:-10"
   "Regular:Regular:0"
   "Italic:Italic:0"
   "Medium:Medium:9"
