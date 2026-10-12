@@ -637,6 +637,19 @@ class ReleaseTest(unittest.TestCase):
                 release.write_manifest(root, "1.6.0", before)
             self.assertFalse((root / "fonts" / release.MANIFEST).exists())
 
+    def test_library_mismatches_name_each_library_off_its_pin(self):
+        # build.sh 와 package.sh 의 판 경고는 이 비교 하나에 기댄다. 고정값을 못 읽으면 경고가 조용히 사라진다.
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root)
+        (root / release.REQUIREMENTS).write_text(
+            "# 빌드와 검사에 쓰는 판\nfonttools==4.66.1\n\n  skia-pathops == 0.9.2  # 경계 연산\nuharfbuzz==0.56.3\n",
+            encoding="utf-8")
+        pins = {"fonttools": "4.66.1", "skia-pathops": "0.9.2", "uharfbuzz": "0.56.3"}
+        self.assertEqual(release.pinned_versions(root), pins)
+        self.assertEqual(release.library_mismatches(root, pins), [])
+        self.assertEqual(release.library_mismatches(root, dict(pins, fonttools="4.66.0", uharfbuzz=None)),
+                         [("fonttools", "4.66.1", "4.66.0"), ("uharfbuzz", "0.56.3", None)])
+
     def test_windows_installer_knows_every_face(self):
         # install-windows.ps1 은 Releases 에 따로 올라가 jetbatang/release.py 의 VARIANTS 를 읽지 못해서
         # 굵기 목록을 따로 들고 있다. 목록에 없는 굵기는 설치도 제거도 되지 않는다.

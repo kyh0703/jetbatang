@@ -12,12 +12,12 @@ command -v python3 >/dev/null || { echo "python3 이 필요합니다"; exit 1; }
 # 첫 줄은 버전, 나머지는 기록에 있는 글꼴 파일 이름이다. jetbatang/release.py 는 표준 라이브러리만 쓴다.
 # 빌드할 때 깔려 있던 라이브러리가 requirements.txt 와 달랐으면 알린다. 막지는 않는다.
 checked=$(python3 -c 'import sys
-from jetbatang.release import library_warnings, verify_manifest
+from jetbatang.release import built_library_warnings, verify_manifest
 try:
     info = verify_manifest(".")
 except ValueError as exc:
     sys.exit(str(exc))
-for line in library_warnings(".", info["libraries"]):
+for line in built_library_warnings(".", info["libraries"]):
     print(line, file=sys.stderr)
 print(info["version"], *info["fonts"], sep="\n")')
 version=${checked%%$'\n'*}

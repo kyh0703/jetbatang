@@ -202,7 +202,8 @@ NFD 를 지원하고, 호환 자모 `ㄱㅏ` 는 조합하지 않아요. 원본�
 
 `fontTools` 와 `skia-pathops` 가 필요해요. 두 라이브러리의 버전이 다르면 같은 코드로도 글꼴이 달라질 수
 있어서 `requirements.txt` 에 버전을 고정해 뒀어요. 가상환경에 설치하세요. 깔린 판이 `requirements.txt` 와
-다르면 `build.sh` 와 `package.sh` 가 경고해요. 쓰던 환경으로 빌드하는 것을 막지는 않아요.
+다르면 `build.sh` 가 빌드하기 전에 경고하고, `package.sh` 는 그렇게 빌드한 `fonts/` 를 묶을 때 다시 경고해요.
+쓰던 환경으로 빌드하는 것을 막지는 않아요.
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate

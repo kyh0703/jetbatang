@@ -85,19 +85,31 @@ def installed_versions(names):
     return found
 
 
-def library_warnings(root, installed=None):
-    """고정한 판과 다른 라이브러리마다 경고 한 줄. installed 를 주지 않으면 지금 깔린 판과 견준다.
+def library_mismatches(root, versions):
+    """versions({이름: 판, 없으면 None}) 가운데 고정한 판과 다른 것. [(이름, 고정한 판, 실제 판)]"""
+    return [(name, pin, versions.get(name)) for name, pin in pinned_versions(root).items()
+            if versions.get(name) != pin]
+
+
+def library_warnings(root):
+    """지금 깔린 판이 고정한 판과 다른 라이브러리마다 경고 한 줄. build.sh 가 빌드하기 전에 찍는다.
     판이 다르면 같은 코드로도 글꼴이 달라질 수 있지만, 쓰던 환경으로 빌드하는 것을 막지는 않는다."""
-    pins = pinned_versions(root)
-    if installed is None:
-        installed = installed_versions(pins)
     lines = []
-    for name, pin in pins.items():
-        found = installed.get(name)
-        if found != pin:
-            got = "깔려 있지 않아요" if found is None else f"{found} 이 깔려 있어요"
-            lines.append(f"경고: {REQUIREMENTS} 는 {name}=={pin} 인데 {got}. 같은 글꼴이 나오지 않을 수 "
-                         f"있어요. pip install -r {REQUIREMENTS}")
+    for name, pin, found in library_mismatches(root, installed_versions(pinned_versions(root))):
+        got = "깔려 있지 않아요" if found is None else f"{found} 이 깔려 있어요"
+        lines.append(f"경고: {REQUIREMENTS} 는 {name}=={pin} 인데 {got}. 같은 글꼴이 나오지 않을 수 "
+                     f"있어요. pip install -r {REQUIREMENTS}")
+    return lines
+
+
+def built_library_warnings(root, libraries):
+    """빌드 기록의 라이브러리 판이 고정한 판과 다르면 경고 한 줄씩. package.sh 가 찍는다. 이미 만든 글꼴은
+    지금 다시 설치해도 그대로라서, 고정한 판으로 설치한 뒤 다시 빌드해야 경고가 사라진다."""
+    lines = []
+    for name, pin, found in library_mismatches(root, libraries):
+        got = "깔려 있지 않았어요" if found is None else f"{found} 이었어요"
+        lines.append(f"경고: fonts/ 를 빌드할 때 {name} 는 {got}({REQUIREMENTS} 는 {pin}). "
+                     f"pip install -r {REQUIREMENTS} 로 설치하고 ./build.sh 로 다시 빌드하세요")
     return lines
 
 
