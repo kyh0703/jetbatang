@@ -88,7 +88,7 @@ class Source(NamedTuple):
 
 
 def donor_sources(donor, base, grid, weight):
-    """donor 에서 가져올 글자를 고른다. ({cp: Source}, donor 에 폭이 없어 건너뛴 글자 수) 를 준다."""
+    """donor 에서 가져올 글자를 고른다. {cp: Source} 를 준다."""
     dcmap = donor.getBestCmap()
     dglyphs = donor.getGlyphSet()
     dhmtx = donor["hmtx"]
@@ -98,8 +98,7 @@ def donor_sources(donor, base, grid, weight):
     targets.update({cp: dcmap[src] for cp, src in ALIASES.items() if src in dcmap})
 
     sources = {cp: Source(dglyphs[name], grid.centered(dhmtx[name][0]), wide, name)
-               for cp, name in targets.items() if name in dhmtx.metrics}
-    skipped = len(targets) - len(sources)
+               for cp, name in targets.items()}
     combining = combining_kana(dglyphs, dcmap, dhmtx)
     made = voiced_kana(dglyphs, dcmap, dhmtx) | small_kana(dglyphs, dcmap, dhmtx) | spacing_marks(combining)
     for cp, (drawing, advance, name) in made.items():
@@ -121,7 +120,7 @@ def donor_sources(donor, base, grid, weight):
             sources[cp] = Source(dglyphs[dcmap[cp]], tf, cell, dcmap[cp], (ex * k, ey * k), True)
     for cp, (tf, grow) in fit_cell(dglyphs, dcmap, bglyphs, bcmap, grid.shear, ex).items():
         sources[cp] = Source(dglyphs[dcmap[cp]], tf, cell, dcmap[cp], (grow, ey))
-    return sources, skipped
+    return sources
 
 
 class DonorGlyphs(NamedTuple):
@@ -242,9 +241,12 @@ def build_font(options):
           f"| scale={grid.scale:.4f} shear={grid.shear:.4f} embolden={weight.ex:g}/{weight.ey:g}")
 
     merge = Merge(base)
-    sources, unusable = donor_sources(donor, base, grid, weight)
+    sources = donor_sources(donor, base, grid, weight)
     done = add_donor_glyphs(merge, weight, sources, options.max_err * grid.upem)
-    print(f"  한글 등 {len(merge.added)}자 추가, {unusable + done.skipped}자 건너뜀")
+    print(f"  한글 등 {len(merge.added)}자 추가, {done.skipped}자 건너뜀")
+    if done.skipped:
+        # 빠진 채 저장하면 그 글자는 터미널이 다른 글꼴로 그린다. 실패로 끝내 빌드 기록이 남지 않게 한다.
+        raise SystemExit(f"{done.skipped}자를 TrueType 외곽선으로 옮기지 못했어요. 위의 skip 줄을 확인하세요")
     if weight.thinner or weight.emboldens:
         verb = "깎음" if weight.thinner else "불림(1칸 기호)"
         print(f"  모양을 지키며 {verb}: {done.reshaped}자"

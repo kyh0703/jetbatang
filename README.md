@@ -265,6 +265,7 @@ Releases 에 올릴 파일은 `./package.sh` 로 `dist/` 에 만들고, `dist/` 
 `install-windows.ps1`, 파일마다 해시를 적은 `SHA256SUMS` 도 따로 나와요.
 `package.sh` 는 `fonts/` 가 `fonts/build-info.json` 과 맞지 않으면 멈춰요. 코드를 고친 뒤 다시 빌드하지
 않았거나, 빌드가 중간에 실패했거나, 빌드한 뒤 글꼴이 바뀐 경우예요. 그때는 `./build.sh` 를 다시 돌리세요.
+RIDIBatang 글자를 하나라도 TrueType 외곽선으로 옮기지 못하면 그 굵기의 빌드가 실패해서 기록이 남지 않아요.
 
 ## LICENSE
 
