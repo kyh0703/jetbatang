@@ -9,17 +9,17 @@ from .scanline import SPECK, coverage, mismatch, overlap, painted, same_structur
 
 
 def embolden_ring(ex, ey):
-    """굵기를 바꿀 방향 8 개를 (dx, dy) 목록으로 준다.
+    """굵기를 바꿀 때 외곽선을 옮겨 놓을 자리 (dx, dy) 목록. 원래 자리와 8 방향이다.
 
-    같은 외곽선을 이 방향으로 조금씩 옮겨 겹쳐 놓으면 TrueType 의 nonzero
-    winding 규칙이 합집합으로 칠해준다. 경계 연산(boolean op) 없이 획이 두꺼워진다.
-    반대로 모두 겹치는 곳만 남기면(thin_copies) 획이 가늘어진다.
+    같은 외곽선을 이 자리마다 겹쳐 놓으면 TrueType 의 nonzero winding 규칙이 합집합으로 칠해준다.
+    경계 연산(boolean op) 없이 획이 두꺼워진다. 원래 자리가 없으면 옮기는 거리보다 가는 획은 양쪽으로
+    옮긴 복사본 사이가 비어 속이 뚫린다. 반대로 모두 겹치는 곳만 남기면(thin_copies) 획이 가늘어진다.
     """
     rx, ry = ex / 2.0, ey / 2.0
     d = math.sqrt(0.5)
     ring = [(1, 0), (-1, 0), (0, 1), (0, -1),
             (d, d), (d, -d), (-d, d), (-d, -d)]
-    return sorted({(round(rx * a), round(ry * b)) for a, b in ring})
+    return sorted({(0, 0)} | {(round(rx * a), round(ry * b)) for a, b in ring})
 
 
 def shifted_copies(glyph, offsets):
@@ -107,7 +107,31 @@ def painted_like_stack(glyph, offsets, paths):
 def union_path(glyph, offsets):
     """겹쳐 놓은 복사본들의 합집합 경로. 못 믿을 결과면 None.
 
-    skia 의 경계 연산은 이런 입력 — 같은 외곽선을 평행 이동한 복사본들 — 에서
+    원래 자리 (0, 0) 의 복사본은 나머지 복사본이 원래 외곽선을 다 덮지 못할 때만 함께 합친다. 옮기는
+    거리보다 가는 획이 없으면 합집합은 같은데, 복사본이 하나 늘면 경계 연산이 더 자주 틀린다(ExtraBold
+    Italic ％ 는 두 경계 연산이 모두 틀리고 복사본을 밀어도 틀려 겹친 채 남았다).
+    """
+    around = [offset for offset in offsets if offset != (0, 0)]
+    if around and len(around) < len(offsets):
+        path = _union_path(glyph, around)
+        if path is not None and _covers(path, glyph):
+            return path
+    return _union_path(glyph, offsets)
+
+
+def _covers(path, glyph):
+    """path 가 glyph 가 칠하는 곳을 다 칠하는지. 경계 연산으로 잰다. 줄마다 칠해 견주면 합집합을 구하는
+    만큼 느리다. 틀려서 덮었다고 보면 원래 자리 없이 합친 결과가 나갈 뿐이고, 합집합의 외곽선은 원래
+    외곽선에서 옮긴 거리만큼 떨어져 있어 경계 연산이 자주 틀리는 겹친 직선도 없다."""
+    try:
+        missed = pathops.op(glyph_path(glyph), path, pathops.PathOp.DIFFERENCE)
+    except pathops.PathOpsError:
+        return False
+    return ink(missed) < SPECK
+
+
+def _union_path(glyph, offsets):
+    """skia 의 경계 연산은 이런 입력 — 같은 외곽선을 평행 이동한 복사본들 — 에서
     가로·세로 직선이 collinear 로 만나면 드물게 예외도 없이 속공간을 먹어 버린다.
     이탤릭 아·야 의 ㅇ 이 까맣게 메워지던 원인이었고, 조용히 틀리기 때문에 결과만
     보고는 알 수 없다. 그래서 알고리즘이 다른 두 경로로 구해 칠해지는 넓이가

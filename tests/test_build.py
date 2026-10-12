@@ -176,6 +176,16 @@ def polygon_glyph(*contours):
     return pen.glyph()
 
 
+class EmboldeningTest(unittest.TestCase):
+    def test_emboldening_keeps_strokes_thinner_than_the_shift(self):
+        # 사방으로 옮긴 복사본만 합치면 옮기는 거리보다 작은 점은 복사본들 사이가 비어 가운데가 뚫린다.
+        # 불린 글자는 원래 글자를 다 덮어야 한다.
+        dot = polygon_glyph([(0, 0), (0, 4), (4, 4), (4, 0)])
+        merged = weight.merge_copies(dot, weight.embolden_ring(40, 16))
+        missed = pathops.op(outlines.glyph_path(dot), outlines.glyph_path(merged), pathops.PathOp.DIFFERENCE)
+        self.assertLess(weight.ink(missed), 1)
+
+
 class ThinningTest(unittest.TestCase):
     def test_thinning_moves_every_edge_inward_by_half_the_amount(self):
         # 가로·세로 40 을 깎으면 획은 양쪽에서 20 씩 줄어든다. 300 정사각형의 바깥은 [20, 280],
