@@ -619,6 +619,9 @@ class ReleaseTest(unittest.TestCase):
             "기록이 없음": lambda root: (root / "fonts" / release.MANIFEST).unlink(),
             "기록이 비었음": lambda root: write_manifest(root, ""),
             "기록에 키가 빠짐": lambda root: write_manifest(root, '{"version": "1.6.0"}'),
+            "기록이 객체가 아님": lambda root: write_manifest(root, "[]"),
+            "기록의 값 형식이 틀림": lambda root: write_manifest(
+                root, '{"version": "1.6.0", "sources": "x", "libraries": {}, "fonts": []}'),
             "기록의 굵기 목록이 모자람": drop_one_font,
         }
         for case, spoil in cases.items():
