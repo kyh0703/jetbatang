@@ -1,5 +1,6 @@
 build/
 .venv/
+.worktrees/
 *.zip
 *.tar.xz
 
