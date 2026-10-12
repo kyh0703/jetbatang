@@ -1,10 +1,11 @@
 """한글 획을 불리거나 깎는다. 경계 연산으로 외곽선을 하나로 만들고, 그 결과를 믿을 수 있는지 본다."""
 import math
+from collections import Counter
 
 import pathops
 
 from .outlines import glyph_path, to_glyph
-from .scanline import coverage, mismatch, overlap, painted, shifted
+from .scanline import SPECK, coverage, mismatch, overlap, painted, same_structure, shifted, structure
 
 
 def embolden_ring(ex, ey):
@@ -132,13 +133,6 @@ def merge_copies(glyph, offsets):
     return None if path is None else to_glyph(path)
 
 
-def topology(path):
-    """(바깥 외곽선 수, 속공간 수). 가는 획이 끊기거나 획 사이가 터지면 달라진다."""
-    contours = list(pathops.simplify(path, clockwise=True).contours)
-    outer = sum(c.clockwise for c in contours)
-    return outer, len(contours) - outer
-
-
 def by_intersection(path, offsets):
     thin = None
     for ox, oy in offsets:
@@ -212,14 +206,59 @@ def thin_copies(glyph, offsets):
     return None
 
 
-def shape_of(glyph):
-    """glyph 의 topology. 못 구하면 None. 경계 연산이 내놓은 경로가 아니라 저장할 글리프로 본다.
+# 굵기를 바꾼 뒤 모양을 견줄 때 곡선 하나를 펴는 토막 수. 1 단위 격자에서 덩어리와 속공간을 가리기에 넉넉하다.
+STRUCTURE_STEPS = 16
+
+
+def structure_of(glyph):
+    """glyph 의 덩어리와 속공간(1 단위 격자). 경계 연산이 내놓은 경로가 아니라 저장할 글리프로 본다.
     TTGlyphPen 이 좌표를 정수로 반올림하며 반 단위보다 좁은 틈을 메워서, 반올림 전 경로로 보면
     Bold ⓠ 의 꼬리가 원에 붙는 것을 놓친다."""
+    return structure(coverage(glyph_path(glyph), STRUCTURE_STEPS))
+
+
+def _outlines(path):
+    """경로를 정리한 (바깥 외곽선들, 속공간 수). 넓이가 SPECK 보다 작은 부스러기 외곽선은 뺀다."""
+    outer, holes = [], 0
+    for contour in pathops.simplify(path, clockwise=True).contours:
+        if abs(contour.area) < SPECK:
+            continue
+        if contour.clockwise:
+            outer.append(contour)
+        else:
+            holes += 1
+    return outer, holes
+
+
+def thinned_alike(glyph, thinned):
+    """깎은 글자가 원래 글자와 모양이 같은지. thinned 는 glyph 안에 든다.
+
+    깎으면 속공간이 바깥과 이어지거나 둘이 합쳐질 수는 있어도 새로 생기지는 않아서, 속공간 수가 같으면
+    속공간은 그대로다. 획은 하나가 끊기면서 다른 하나가 사라지면 수가 같으므로, 깎은 바깥 외곽선이 원래
+    바깥 외곽선에 하나씩 드는지도 본다. 깎은 외곽선은 원래 외곽선보다 안쪽으로 들어가 있어서, 그 위의 점이
+    원래 글자의 어느 덩어리에 드는지로 짝을 찾는다. 반올림한 꼭짓점 몇은 원래 외곽선에 걸치거나 살짝 밖에
+    있어서(LightItalic ㎿) 점마다 물어 많은 쪽을 따른다. 1 단위 격자로 이어짐을 재면 가는 굵기에서 1 단위보다
+    가늘게 이어진 곳을 끊긴 것으로 보아 ThinItalic 의 て で ゑ 를 Regular 굵기로 남기므로, 외곽선으로 잰다.
+    """
     try:
-        return topology(glyph_path(glyph))
+        before, holes = _outlines(glyph_path(glyph))
+        after, thinned_holes = _outlines(glyph_path(thinned))
     except pathops.PathOpsError:
-        return None
+        return False
+    if holes != thinned_holes or len(before) != len(after):
+        return False
+    owners = set()
+    for contour in after:
+        votes = Counter()
+        for _, points in contour.segments:
+            # 섬은 속공간 안의 바깥 외곽선이다. 점을 품는 외곽선 가운데 가장 작은 것이 그 점의 덩어리다.
+            containing = [i for i, outer in enumerate(before) if points and outer.contains(points[-1])]
+            if containing:
+                votes[min(containing, key=lambda i: abs(before[i].area))] += 1
+        if not votes:
+            return False
+        owners.add(votes.most_common(1)[0][0])
+    return len(owners) == len(before)
 
 
 # 굵기를 바꾸다 모양이 바뀌는 글자는 이 비율로 덜 바꿔 본다. Thin 에서는 ㎡ 『 의 가는 획이
@@ -229,16 +268,19 @@ REWEIGH_STEPS = (1.0, 0.75, 0.5, 0.25)
 
 def reweigh(glyph, gx, gy):
     """획을 가로 gx, 세로 gy 만큼 불리거나(양수) 깎아(음수) 외곽선 하나로 만든 글리프와 실제로
-    바꾼 비율. 가는 획이 끊기거나 사라지고, 획이 서로 붙거나 속공간이 막혀 바깥 외곽선이나
-    속공간 수가 바뀌면 덜 바꿔 본다. 끝까지 안 되면 (None, 0)."""
-    shape = shape_of(glyph)
-    if shape is None:
-        return None, 0.0
+    바꾼 비율. 모양이 바뀌면 덜 바꿔 본다. 끝까지 안 되면 (None, 0).
+
+    불릴 때는 1 단위 격자로 덩어리와 속공간을 짝지어 본다. 1 단위보다 좁아진 틈은 붙은 것으로 보아,
+    ExtraBold ⓟ 의 p 가 원에 거의 닿는 것도 막는다. 깎을 때는 thinned_alike 로 본다."""
+    emboldening = gx > 0 or gy > 0
+    shape = structure_of(glyph) if emboldening else None
     for step in REWEIGH_STEPS:
         ring = embolden_ring(abs(gx) * step, abs(gy) * step)
-        result = union_path(glyph, ring) if gx > 0 or gy > 0 else thin_copies(glyph, ring)
+        result = union_path(glyph, ring) if emboldening else thin_copies(glyph, ring)
         reweighed = None if result is None else to_glyph(result)
-        if reweighed is not None and shape_of(reweighed) == shape:
+        if reweighed is None:
+            continue
+        if same_structure(shape, structure_of(reweighed)) if emboldening else thinned_alike(glyph, reweighed):
             return reweighed, step
     return None, 0.0
 

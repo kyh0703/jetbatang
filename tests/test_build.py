@@ -114,7 +114,7 @@ class WeightTest(unittest.TestCase):
     def test_thin_faces_thin_almost_every_syllable(self):
         # 깎다가 획이 끊기는 글자는 덜 깎거나 Regular 굵기로 둔다. 경계 연산 라이브러리가 바뀌어 검증이
         # 자꾸 실패하면 음절 수백 자가 덜 깎이거나 Regular 굵기로 남아 Thin 문단이 얼룩지는데, ㅣ 하나만
-        # 재는 위 검사로는 모른다. README 는 Regular 굵기로 남는 글자가 굵기마다 열네~열여덟 자라고 적었다.
+        # 재는 위 검사로는 모른다. README 는 Regular 굵기로 남는 글자가 굵기마다 열세~열여덟 자라고 적었다.
         # 다 깎으면 잉크 상자가 좌우로 가로 증가량만큼 줄어든다. 그 7/8 도 줄지 않았으면 덜 깎은 글자로 센다.
         plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)} if ITALIC.exists() else {False: TTFont(REGULAR)}
         for suffix, _, embolden in release.VARIANTS:
@@ -211,6 +211,21 @@ class ThinningTest(unittest.TestCase):
         outside = pathops.op(thin, outlines.glyph_path(notched), pathops.PathOp.DIFFERENCE)
         self.assertLess(weight.ink(outside), 1)
 
+    def test_thinned_shape_pairs_each_stroke_with_its_original(self):
+        # 깎다가 가운데가 좁은 획이 둘로 끊기면서 작은 점 하나가 사라지면 바깥 외곽선 수는 그대로라, 수만
+        # 세면 모양이 그대로라고 보고 그 굵기로 내보낸다. 반대로 1 단위보다 가늘게 남은 목은 이어진 것이다.
+        # 1 단위 격자로 이어짐을 재면 ThinItalic 의 て で ゑ 를 끊겼다고 보아 Regular 굵기로 남긴다.
+        necked = polygon_glyph([(0, 0), (0, 100), (100, 100), (100, 55), (200, 55), (200, 100), (300, 100),
+                                (300, 0), (200, 0), (200, 45), (100, 45), (100, 0)],
+                               [(400, 0), (400, 20), (420, 20), (420, 0)])
+        split = polygon_glyph([(10, 10), (10, 90), (90, 90), (90, 10)],
+                              [(210, 10), (210, 90), (290, 90), (290, 10)])
+        hairline = polygon_glyph([(10, 10), (10, 90), (90, 90), (90, 50), (210, 52), (210, 90), (290, 90),
+                                  (290, 10), (210, 10), (210, 51), (90, 49), (90, 10)],
+                                 [(405, 5), (405, 15), (415, 15), (415, 5)])
+        self.assertFalse(weight.thinned_alike(necked, split))
+        self.assertTrue(weight.thinned_alike(necked, hairline))
+
 
 class ScanlineTest(unittest.TestCase):
     # 경계 연산 결과는 scanline 으로 직접 칠한 정답과 견주어 고른다. 이 정답이 틀리면 속공간을 먹은
@@ -231,6 +246,23 @@ class ScanlineTest(unittest.TestCase):
                                                   [(105, 100), (195, 100), (195, 200), (105, 200)]))
         self.assertIsNone(weight.painted_like_stack(ring, offsets, [eaten]))
         self.assertIs(weight.painted_like_stack(ring, offsets, [eaten, right]), right)
+
+    def test_structure_tells_a_filled_counter_from_a_new_one(self):
+        # 굵기를 바꾸다 왼쪽 ㅁ 의 속공간이 막히고, 오른쪽 ㄷ 의 터진 곳이 닫혀 새 속공간이 생긴 글자.
+        # 바깥 외곽선 둘·속공간 하나로 개수는 그대로라, 개수만 세면 모양이 그대로라고 본다.
+        def shape_of(*contours):
+            return scanline.structure(scanline.coverage(outlines.glyph_path(polygon_glyph(*contours))))
+
+        square = [(0, 0), (0, 200), (200, 200), (200, 0)]
+        def opening(y0, y1):
+            return [(300, 0), (300, 200), (500, 200), (500, y1), (480, y1), (480, 180), (320, 180),
+                    (320, 20), (480, 20), (480, y0), (500, y0), (500, 0)]
+        before = shape_of(square, [(95, 95), (105, 95), (105, 105), (95, 105)], opening(95, 105))
+        thicker = shape_of(square, [(97, 97), (103, 97), (103, 103), (97, 103)], opening(97, 103))
+        swapped = shape_of(square, [(300, 0), (300, 200), (500, 200), (500, 0)],
+                           [(320, 20), (480, 20), (480, 180), (320, 180)])
+        self.assertTrue(scanline.same_structure(before, thicker))
+        self.assertFalse(scanline.same_structure(before, swapped))
 
 
 @unittest.skipUnless(DONOR.exists(), "build/RIDIBatang.otf 가 없어요. ./build.sh 를 먼저 돌리세요")
