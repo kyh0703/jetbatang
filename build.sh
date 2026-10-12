@@ -53,6 +53,10 @@ case "$JOBS" in
   ''|*[!0-9]*) echo "JOBS 는 0 이상의 정수여야 해요: '$JOBS'"; exit 1;;
 esac
 
+# 코드 해시와 라이브러리 판은 코드에서 무엇이든 읽기 전에 잡아 둔다. 아래 VARIANTS 처럼 여기서 읽어 둔 값도
+# 글꼴을 바꾸므로, 그 뒤에 코드가 바뀌면 끝날 때 견주어 기록하지 않는다.
+started=$(python3 -c 'import json; from jetbatang.release import snapshot; print(json.dumps(snapshot(".")))')
+
 # 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량. 목록과 값은 jetbatang/release.py 의 VARIANTS 에 있다.
 variants=$(python3 -c 'from jetbatang.release import VARIANTS
 for variant in VARIANTS:
@@ -166,10 +170,8 @@ build_one() {
 export -f build_one
 export BASE_PREFIX FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE
 
-# 빌드가 도중에 멈추면 예전 기록이 새 파일과 섞여 남지 않게 먼저 지운다. 코드 해시와 라이브러리 판은
-# 빌드를 시작할 때 잡아 둔다. 끝날 때 코드가 달라져 있으면 어느 코드로 만든 글꼴인지 알 수 없어 기록하지 않는다.
+# 빌드가 도중에 멈추면 예전 기록이 새 파일과 섞여 남지 않게 먼저 지운다.
 python3 -c 'import pathlib; from jetbatang.release import MANIFEST; pathlib.Path("fonts", MANIFEST).unlink(missing_ok=True)'
-started=$(python3 -c 'import json; from jetbatang.release import snapshot; print(json.dumps(snapshot(".")))')
 echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE, jobs=$JOBS)"
 printf '%s\n' "${VARIANTS[@]}" | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} ||
   { echo "빌드에 실패한 굵기가 있어요. 위 로그를 확인하세요"; exit 1; }
