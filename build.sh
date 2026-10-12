@@ -27,6 +27,11 @@ JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 command -v curl >/dev/null || { echo "curl 이 필요합니다"; exit 1; }
 command -v unzip >/dev/null || { echo "unzip 이 필요합니다"; exit 1; }
 python3 -c "import fontTools, pathops" 2>/dev/null || { echo "pip install -r requirements.txt 먼저 하세요"; exit 1; }
+# requirements.txt 와 다른 판이 깔려 있으면 알린다. 같은 글꼴이 나오지 않을 수 있지만, 쓰던 환경으로
+# 빌드하는 것을 막지는 않는다. 깔린 판은 빌드 기록에도 남아 package.sh 가 다시 알린다.
+python3 -c 'from jetbatang.release import library_warnings
+for line in library_warnings("."):
+    print(line)' >&2
 # 원본을 내려받기 전에 버전부터 확인한다. 규칙은 build.py 가 쓰는 jetbatang/metadata.py 의 함수 하나로 본다.
 python3 -c 'import sys
 from jetbatang.metadata import font_revision
@@ -153,13 +158,20 @@ build_one() {
 export -f build_one
 export BASE_PREFIX FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE
 
-# 빌드가 도중에 멈추면 예전 기록이 새 파일과 섞여 남지 않게 먼저 지운다.
+# 빌드가 도중에 멈추면 예전 기록이 새 파일과 섞여 남지 않게 먼저 지운다. 코드 해시와 라이브러리 판은
+# 빌드를 시작할 때 잡아 둔다. 끝날 때 코드가 달라져 있으면 어느 코드로 만든 글꼴인지 알 수 없어 기록하지 않는다.
 python3 -c 'import pathlib; from jetbatang.release import MANIFEST; pathlib.Path("fonts", MANIFEST).unlink(missing_ok=True)'
+started=$(python3 -c 'import json; from jetbatang.release import snapshot; print(json.dumps(snapshot(".")))')
 echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE, jobs=$JOBS)"
 printf '%s\n' "${VARIANTS[@]}" | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} ||
   { echo "빌드에 실패한 굵기가 있어요. 위 로그를 확인하세요"; exit 1; }
 # 열여섯 종이 모두 끝났을 때만 어느 코드로 만든 어느 파일인지 적는다. package.sh 와 검사가 이걸 본다.
-python3 -c 'import sys; from jetbatang.release import write_manifest; write_manifest(".", sys.argv[1])' "$VERSION"
+python3 -c 'import json, sys
+from jetbatang.release import write_manifest
+try:
+    write_manifest(".", sys.argv[1], json.loads(sys.argv[2]))
+except ValueError as exc:
+    sys.exit(str(exc))' "$VERSION" "$started"
 
 echo
 echo "완료. fonts/ 를 확인하세요."

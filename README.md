@@ -193,7 +193,8 @@ NFD 를 지원하고, 호환 자모 `ㄱㅏ` 는 조합하지 않아요. 원본�
 ## BUILD
 
 `fontTools` 와 `skia-pathops` 가 필요해요. 두 라이브러리의 버전이 다르면 같은 코드로도 글꼴이 달라질 수
-있어서 `requirements.txt` 에 버전을 고정해 뒀어요. 가상환경에 설치하세요.
+있어서 `requirements.txt` 에 버전을 고정해 뒀어요. 가상환경에 설치하세요. 깔린 판이 `requirements.txt` 와
+다르면 `build.sh` 와 `package.sh` 가 경고해요. 쓰던 환경으로 빌드하는 것을 막지는 않아요.
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
@@ -243,9 +244,11 @@ VERSION=1.6.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./
 한 종씩 세밀하게 조절하려면 `python3 build.py --help` 를 보세요. `build.py` 는 명령줄 입구이고, 글꼴을 합치는
 코드는 영역별로 `jetbatang/` 에 나눠 두었어요. 어느 모듈이 무엇을 하는지는 `jetbatang/__init__.py` 에 적혀 있어요.
 
-열여섯 종이 모두 만들어지면 `build.sh` 가 어느 코드(`build.py`·`build.sh`·`requirements.txt`·`jetbatang/*.py`)로
-만든 어느 파일인지 `fonts/build-info.json` 에 적어요. 회귀 검사는 이 기록으로 `fonts/` 가 지금 코드로 만든
-것인지 확인해요. 기록이 없는 예전 `fonts/` 에서는 그 검사만 건너뛰어요.
+열여섯 종이 모두 만들어지면 `build.sh` 가 어느 코드(`build.py`·`build.sh`·`requirements.txt`·`jetbatang/*.py`)와
+어느 판의 라이브러리로 만든 어느 파일인지 `fonts/build-info.json` 에 적어요. 코드는 빌드를 시작할 때 잡아 두고,
+빌드하는 동안 코드가 바뀌었으면 기록하지 않아요. 회귀 검사는 이 기록으로 `fonts/` 가 지금 코드로 끝까지 만든
+것인지 확인해요. 기록이 없으면(예전 `build.sh` 로 만들었거나 빌드가 중간에 멈췄으면) 이 검사가 실패하니,
+`./build.sh` 를 한 번 다시 돌리세요.
 
 Releases 에 올릴 파일은 `./package.sh` 로 `dist/` 에 만들고, `dist/` 의 파일을 모두 올리면 돼요.
 `JetBatangNF-all.zip` 에는 글꼴과 `install-windows.ps1`, `LICENSE` 가 함께 들어가고, 낱개 `ttf` 와

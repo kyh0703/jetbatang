@@ -1,6 +1,8 @@
 """굵기 목록과, build.sh 가 fonts/ 에 남기는 빌드 기록. 표준 라이브러리만 쓴다."""
 import hashlib
+import importlib.metadata
 import json
+import os
 from pathlib import Path
 
 
@@ -31,12 +33,14 @@ VARIANTS = [
     ("ExtraBoldItalic", "ExtraBold Italic", 56),
 ]
 
-# build.sh 가 열여섯 종을 모두 만든 뒤 fonts/ 에 남기는 기록. 어느 코드로 만든 어느 파일인지 적어서,
-# 검사와 package.sh 가 예전 코드로 만들었거나 일부만 다시 만든 fonts/ 를 알아보게 한다.
+# build.sh 가 열여섯 종을 모두 만든 뒤 fonts/ 에 남기는 기록. 어느 코드와 라이브러리로 만든 어느 파일인지
+# 적어서, 검사와 package.sh 가 예전 코드로 만들었거나 일부만 다시 만든 fonts/ 를 알아보게 한다.
 MANIFEST = "build-info.json"
 
 # 같은 재료로도 이 파일들이 바뀌면 글꼴이 달라진다. 재료의 해시는 build.sh 에 있다.
 SOURCES = ("build.py", "build.sh", "requirements.txt", "jetbatang/*.py")
+# 라이브러리 판을 고정한 파일. name==version 줄만 읽는다.
+REQUIREMENTS = "requirements.txt"
 
 
 def sha256_file(path):
@@ -60,31 +64,87 @@ def sources_digest(root):
     return digest.hexdigest()
 
 
+def pinned_versions(root):
+    """REQUIREMENTS 에 고정한 {이름: 판}."""
+    pins = {}
+    for line in (Path(root) / REQUIREMENTS).read_text().splitlines():
+        name, pinned, version = line.split("#", 1)[0].partition("==")
+        if pinned:
+            pins[name.strip()] = version.strip()
+    return pins
+
+
+def installed_versions(names):
+    """지금 깔린 {이름: 판}. 깔리지 않았으면 None."""
+    found = {}
+    for name in names:
+        try:
+            found[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            found[name] = None
+    return found
+
+
+def library_warnings(root, installed=None):
+    """고정한 판과 다른 라이브러리마다 경고 한 줄. installed 를 주지 않으면 지금 깔린 판과 견준다.
+    판이 다르면 같은 코드로도 글꼴이 달라질 수 있지만, 쓰던 환경으로 빌드하는 것을 막지는 않는다."""
+    pins = pinned_versions(root)
+    if installed is None:
+        installed = installed_versions(pins)
+    lines = []
+    for name, pin in pins.items():
+        found = installed.get(name)
+        if found != pin:
+            got = "깔려 있지 않아요" if found is None else f"{found} 이 깔려 있어요"
+            lines.append(f"경고: {REQUIREMENTS} 는 {name}=={pin} 인데 {got}. 같은 글꼴이 나오지 않을 수 "
+                         f"있어요. pip install -r {REQUIREMENTS}")
+    return lines
+
+
+def snapshot(root):
+    """빌드를 시작할 때의 코드 해시와 깔린 라이브러리 판. write_manifest 가 끝날 때와 견준다."""
+    return {"sources": sources_digest(root), "libraries": installed_versions(pinned_versions(root))}
+
+
 def font_files():
     """VARIANTS 순서대로 build.sh 가 fonts/ 에 만드는 파일 이름."""
     return [f"JetBatangNF-{suffix}.ttf" for suffix, _, _ in VARIANTS]
 
 
-def write_manifest(root, version):
+def write_manifest(root, version, started):
+    """열여섯 종을 다 만든 뒤 기록을 남긴다. started 는 빌드를 시작할 때 잡은 snapshot 이다. 그사이에
+    코드가 바뀌었으면 어느 코드로 만든 글꼴인지 알 수 없어서, 기록하지 않고 ValueError."""
+    if sources_digest(root) != started["sources"]:
+        raise ValueError("빌드하는 동안 코드가 바뀌었어요. ./build.sh 로 다시 빌드하세요")
     fonts = Path(root) / "fonts"
-    info = {"version": version, "sources": sources_digest(root),
+    info = {"version": version, "sources": started["sources"], "libraries": started["libraries"],
             "fonts": {name: sha256_file(fonts / name) for name in font_files()}}
-    (fonts / MANIFEST).write_text(json.dumps(info, indent=2) + "\n")
+    # 쓰다 멈춰도 반쯤 쓴 기록이 남지 않게 다 쓴 뒤에 바꿔 넣는다.
+    part = fonts / (MANIFEST + ".part")
+    part.write_text(json.dumps(info, indent=2) + "\n")
+    os.replace(part, fonts / MANIFEST)
 
 
 def verify_manifest(root):
-    """fonts/ 가 지금 코드로 열여섯 종을 끝까지 빌드한 그대로인지 본다. 맞으면 (버전, 파일 이름들),
-    아니면 ValueError."""
+    """fonts/ 가 지금 코드로 열여섯 종을 끝까지 빌드한 그대로인지 본다. 맞으면 기록(dict), 아니면 ValueError."""
     fonts = Path(root) / "fonts"
+    rebuild = "./build.sh 로 다시 빌드하세요"
     try:
         info = json.loads((fonts / MANIFEST).read_text())
     except FileNotFoundError:
         raise ValueError(f"fonts/{MANIFEST} 가 없어요. 빌드가 끝나지 않았거나 예전 build.sh 로 만든 "
-                         "fonts/ 예요. ./build.sh 로 다시 빌드하세요") from None
+                         f"fonts/ 예요. {rebuild}") from None
+    except ValueError:
+        info = None
+    if not (isinstance(info, dict) and isinstance(info.get("version"), str)
+            and isinstance(info.get("sources"), str) and isinstance(info.get("libraries"), dict)
+            and isinstance(info.get("fonts"), dict)):
+        raise ValueError(f"fonts/{MANIFEST} 를 읽을 수 없어요. {rebuild}")
     if info["sources"] != sources_digest(root):
-        raise ValueError(f"fonts/ 는 지금과 다른 {'·'.join(SOURCES)} 로 만들었어요. "
-                         "./build.sh 로 다시 빌드하세요")
+        raise ValueError(f"fonts/ 는 지금과 다른 {'·'.join(SOURCES)} 로 만들었어요. {rebuild}")
+    if list(info["fonts"]) != font_files():
+        raise ValueError(f"fonts/{MANIFEST} 의 굵기 목록이 VARIANTS 와 달라요. {rebuild}")
     for name, digest in info["fonts"].items():
         if not (fonts / name).exists() or sha256_file(fonts / name) != digest:
-            raise ValueError(f"fonts/{name} 가 빌드한 뒤에 바뀌었거나 없어요. ./build.sh 로 다시 빌드하세요")
-    return info["version"], list(info["fonts"])
+            raise ValueError(f"fonts/{name} 가 빌드한 뒤에 바뀌었거나 없어요. {rebuild}")
+    return info

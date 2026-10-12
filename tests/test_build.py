@@ -3,7 +3,10 @@
     python3 -m unittest discover tests
 """
 from io import BytesIO
+import json
 import re
+import shutil
+import tempfile
 import unicodedata
 import unittest
 from pathlib import Path
@@ -573,13 +576,66 @@ class ReleaseTest(unittest.TestCase):
     @unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
     def test_fonts_were_built_from_current_sources(self):
         # 이 파일의 검사는 fonts/ 를 잰다. fonts/ 를 예전 코드로 만들었거나 일부만 다시 만들었으면
-        # 검사가 통과해도 지금 코드를 잰 게 아니다.
-        if not (ROOT / "fonts" / release.MANIFEST).exists():
-            self.skipTest(f"fonts/{release.MANIFEST} 가 없어요. 예전 build.sh 로 만든 fonts/ 예요")
+        # 검사가 통과해도 지금 코드를 잰 게 아니다. 빌드가 중간에 멈춰 기록이 없을 때도 마찬가지다.
         try:
             release.verify_manifest(ROOT)
         except ValueError as exc:
             self.fail(str(exc))
+
+    def test_manifest_accepts_only_a_finished_build_of_the_current_tree(self):
+        # package.sh 는 이 기록만 믿고 글꼴을 묶는다. 하나라도 받아들이면 예전 글꼴이 릴리스로 나간다.
+        def built():
+            root = Path(tempfile.mkdtemp())
+            self.addCleanup(shutil.rmtree, root)
+            for pattern in release.SOURCES:
+                for path in ROOT.glob(pattern):
+                    (root / path.relative_to(ROOT)).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(path, root / path.relative_to(ROOT))
+            (root / "fonts").mkdir()
+            for name in release.font_files():
+                (root / "fonts" / name).write_bytes(name.encode())
+            release.write_manifest(root, "1.6.0", release.snapshot(root))
+            return root
+
+        self.assertEqual(release.verify_manifest(built())["version"], "1.6.0")
+
+        def edit_code(root):
+            with open(root / "jetbatang" / "charset.py", "a") as f:
+                f.write("# 고침\n")
+
+        def write_manifest(root, text):
+            (root / "fonts" / release.MANIFEST).write_text(text)
+
+        def drop_one_font(root):
+            path = root / "fonts" / release.MANIFEST
+            info = json.loads(path.read_text())
+            info["fonts"].pop(release.font_files()[0])
+            path.write_text(json.dumps(info))
+
+        cases = {
+            "빌드한 뒤 코드를 고침": edit_code,
+            "빌드한 뒤 글꼴이 바뀜": lambda root: (root / "fonts" / release.font_files()[3]).write_bytes(b"x"),
+            "글꼴 하나가 없음": lambda root: (root / "fonts" / release.font_files()[5]).unlink(),
+            "기록이 없음": lambda root: (root / "fonts" / release.MANIFEST).unlink(),
+            "기록이 비었음": lambda root: write_manifest(root, ""),
+            "기록에 키가 빠짐": lambda root: write_manifest(root, '{"version": "1.6.0"}'),
+            "기록의 굵기 목록이 모자람": drop_one_font,
+        }
+        for case, spoil in cases.items():
+            with self.subTest(case=case):
+                root = built()
+                spoil(root)
+                with self.assertRaises(ValueError):
+                    release.verify_manifest(root)
+
+        with self.subTest(case="빌드하는 동안 코드를 고침"):
+            root = built()
+            (root / "fonts" / release.MANIFEST).unlink()
+            before = release.snapshot(root)
+            edit_code(root)
+            with self.assertRaises(ValueError):
+                release.write_manifest(root, "1.6.0", before)
+            self.assertFalse((root / "fonts" / release.MANIFEST).exists())
 
     def test_windows_installer_knows_every_face(self):
         # install-windows.ps1 은 Releases 에 따로 올라가 jetbatang/release.py 의 VARIANTS 를 읽지 못해서
