@@ -1,9 +1,18 @@
 # JetBatang NF
 
-터미널에서 쓰는 한글 명조 글꼴이에요. [JetBrainsMono Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts) 의
-라틴·기호·아이콘에 [RIDIBatang](https://ridicorp.com/ridibatang/) 의 한글·가나를 얹었어요.
-한글 글자폭은 라틴의 정확히 두 배(1200/600)로 고정해서, 한글을 섞어 써도 격자가 어긋나지 않아요.
-굵기 여덟 단계에 정체와 이탤릭을 더해 모두 열여섯 종이에요.
+코딩 환경이 IDE 에서 터미널로 옮겨 오고 에이전트에게 작업을 맡기게 되면서, 요즘은 터미널에서 코드보다
+텍스트를 읽는 시간이 더 길어졌습니다. 그러다 보니 터미널의 한글이 자꾸 눈에 걸리더라고요.
+
+그래서 리디에서 나온 전자책 전용 폰트인 [리디바탕](https://ridicorp.com/ridibatang/)(RIDIBatang) 과
+[JetBrains Mono](https://www.jetbrains.com/lp/mono/) 를 하나로 합쳐 봤습니다. 만들어 놓고 직접 써 보니 무척
+만족스러워서, 다른 분들도 쓰시면 좋을 것 같아 공유합니다.
+
+써 보시다가 이상한 부분이 있으면 [Issues](../../issues) 로 알려 주세요. 감사합니다.
+
+- 라틴·기호·아이콘은 [JetBrainsMono Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts), 한글·가나는
+  리디바탕에서 가져왔어요.
+- 한글 글자폭은 라틴의 정확히 두 배(1200/600)로 고정해서, 한글을 섞어 써도 터미널 격자가 어긋나지 않아요.
+- 굵기 여덟 단계에 정체와 이탤릭을 더해 모두 열여섯 종이에요.
 
 ![preview](docs/preview.png)
 
@@ -195,6 +204,10 @@ VERSION=1.6.0 ./build.sh
 `uv` 가 있으면 가상환경을 만들지 않고 `VERSION=1.6.0 uv run --no-project --with-requirements requirements.txt ./build.sh`
 로 돌려도 돼요.
 
+`requirements.txt` 의 `uharfbuzz` 는 회귀 검사에서 NFD 문자열을 실제로 조합할 때 써요. 빌드할 때도 설치돼
+있으면 fontTools 가 GSUB 를 harfbuzz 로 배치해서, 없을 때와 동작은 같지만 파일 바이트가 달라져요. 릴리스는
+`requirements.txt` 를 모두 설치한 환경에서 빌드하세요.
+
 원본 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
 다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `RIDI_SHA256` 이나
 `NERD_PINNED_SHA256` 을 고치세요. `NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의
@@ -207,9 +220,6 @@ VERSION=1.6.0 ./build.sh
 글꼴 내부 버전값의 표현 범위 때문에 `Y`·`Z` 는 0~99, 버전의 상한은 `327.67.99` 예요.
 
 결과는 `fonts/JetBatangNF-*.ttf` 열여섯 개예요. 빌드한 다음 아래 명령으로 회귀 검사를 돌려요.
-`requirements.txt` 의 `uharfbuzz` 는 검사에서 NFD 문자열을 실제로 조합하는 데 써요. 빌드할 때도 설치돼 있으면
-fontTools 가 GSUB 를 harfbuzz 로 배치해서, 없을 때와 동작은 같지만 파일 바이트가 달라져요. 릴리스는
-`requirements.txt` 를 모두 설치한 환경에서 빌드하세요.
 굵기 검사는 기본값으로 빌드했다고 보고 재요. `EMBOLDEN_SCALE` 같은 빌드 값을 바꾸면 실패할 수 있어요.
 
 ```sh
