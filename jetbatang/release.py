@@ -1,5 +1,7 @@
-"""굵기 목록과 build.sh 가 재료를 확인할 때 쓰는 파일 해시. 표준 라이브러리만 쓴다."""
+"""굵기 목록과, build.sh 가 fonts/ 에 남기는 빌드 기록. 표준 라이브러리만 쓴다."""
 import hashlib
+import json
+from pathlib import Path
 
 
 # 굵기 열여섯 종. (파일 접미사, 타이포그래픽 스타일, 한글 가로 굵기 증가량)
@@ -29,6 +31,13 @@ VARIANTS = [
     ("ExtraBoldItalic", "ExtraBold Italic", 56),
 ]
 
+# build.sh 가 열여섯 종을 모두 만든 뒤 fonts/ 에 남기는 기록. 어느 코드로 만든 어느 파일인지 적어서,
+# 검사와 package.sh 가 예전 코드로 만들었거나 일부만 다시 만든 fonts/ 를 알아보게 한다.
+MANIFEST = "build-info.json"
+
+# 같은 재료로도 이 파일들이 바뀌면 글꼴이 달라진다. 재료의 해시는 build.sh 에 있다.
+SOURCES = ("build.py", "build.sh", "requirements.txt", "jetbatang/*.py")
+
 
 def sha256_file(path):
     digest = hashlib.sha256()
@@ -36,3 +45,46 @@ def sha256_file(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sources_digest(root):
+    """SOURCES 에 걸리는 파일을 한데 묶은 해시."""
+    root = Path(root)
+    digest = hashlib.sha256()
+    for pattern in SOURCES:
+        paths = sorted(root.glob(pattern))
+        if not paths:
+            raise FileNotFoundError(root / pattern)
+        for path in paths:
+            digest.update(f"{path.relative_to(root).as_posix()} {sha256_file(path)}\n".encode())
+    return digest.hexdigest()
+
+
+def font_files():
+    """VARIANTS 순서대로 build.sh 가 fonts/ 에 만드는 파일 이름."""
+    return [f"JetBatangNF-{suffix}.ttf" for suffix, _, _ in VARIANTS]
+
+
+def write_manifest(root, version):
+    fonts = Path(root) / "fonts"
+    info = {"version": version, "sources": sources_digest(root),
+            "fonts": {name: sha256_file(fonts / name) for name in font_files()}}
+    (fonts / MANIFEST).write_text(json.dumps(info, indent=2) + "\n")
+
+
+def verify_manifest(root):
+    """fonts/ 가 지금 코드로 열여섯 종을 끝까지 빌드한 그대로인지 본다. 맞으면 (버전, 파일 이름들),
+    아니면 ValueError."""
+    fonts = Path(root) / "fonts"
+    try:
+        info = json.loads((fonts / MANIFEST).read_text())
+    except FileNotFoundError:
+        raise ValueError(f"fonts/{MANIFEST} 가 없어요. 빌드가 끝나지 않았거나 예전 build.sh 로 만든 "
+                         "fonts/ 예요. ./build.sh 로 다시 빌드하세요") from None
+    if info["sources"] != sources_digest(root):
+        raise ValueError(f"fonts/ 는 지금과 다른 {'·'.join(SOURCES)} 로 만들었어요. "
+                         "./build.sh 로 다시 빌드하세요")
+    for name, digest in info["fonts"].items():
+        if not (fonts / name).exists() or sha256_file(fonts / name) != digest:
+            raise ValueError(f"fonts/{name} 가 빌드한 뒤에 바뀌었거나 없어요. ./build.sh 로 다시 빌드하세요")
+    return info["version"], list(info["fonts"])

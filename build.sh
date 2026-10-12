@@ -153,9 +153,13 @@ build_one() {
 export -f build_one
 export BASE_PREFIX FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE
 
+# 빌드가 도중에 멈추면 예전 기록이 새 파일과 섞여 남지 않게 먼저 지운다.
+python3 -c 'import pathlib; from jetbatang.release import MANIFEST; pathlib.Path("fonts", MANIFEST).unlink(missing_ok=True)'
 echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE, jobs=$JOBS)"
 printf '%s\n' "${VARIANTS[@]}" | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} ||
   { echo "빌드에 실패한 굵기가 있어요. 위 로그를 확인하세요"; exit 1; }
+# 열여섯 종이 모두 끝났을 때만 어느 코드로 만든 어느 파일인지 적는다. package.sh 와 검사가 이걸 본다.
+python3 -c 'import sys; from jetbatang.release import write_manifest; write_manifest(".", sys.argv[1])' "$VERSION"
 
 echo
 echo "완료. fonts/ 를 확인하세요."

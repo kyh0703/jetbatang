@@ -570,6 +570,17 @@ class VersionTest(unittest.TestCase):
 
 
 class ReleaseTest(unittest.TestCase):
+    @unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+    def test_fonts_were_built_from_current_sources(self):
+        # 이 파일의 검사는 fonts/ 를 잰다. fonts/ 를 예전 코드로 만들었거나 일부만 다시 만들었으면
+        # 검사가 통과해도 지금 코드를 잰 게 아니다.
+        if not (ROOT / "fonts" / release.MANIFEST).exists():
+            self.skipTest(f"fonts/{release.MANIFEST} 가 없어요. 예전 build.sh 로 만든 fonts/ 예요")
+        try:
+            release.verify_manifest(ROOT)
+        except ValueError as exc:
+            self.fail(str(exc))
+
     def test_windows_installer_knows_every_face(self):
         # install-windows.ps1 은 Releases 에 따로 올라가 jetbatang/release.py 의 VARIANTS 를 읽지 못해서
         # 굵기 목록을 따로 들고 있다. 목록에 없는 굵기는 설치도 제거도 되지 않는다.

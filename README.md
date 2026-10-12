@@ -27,6 +27,8 @@ if (상태 === "완료") return "성공";
 [Releases](../../releases) 에서 원하는 굵기의 `ttf` 나 `JetBatangNF-all.zip` 을 받으세요.
 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 글꼴 파일이 없어요.
 설치한 판은 글꼴 정보의 버전(`Version 1.6.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
+릴리스에 `SHA256SUMS` 가 있으면 받은 파일이 있는 폴더에서 `sha256sum -c SHA256SUMS --ignore-missing` 으로
+파일이 온전한지 확인할 수 있어요.
 
 **Windows**
 
@@ -231,9 +233,15 @@ VERSION=1.6.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./
 한 종씩 세밀하게 조절하려면 `python3 build.py --help` 를 보세요. `build.py` 는 명령줄 입구이고, 글꼴을 합치는
 코드는 영역별로 `jetbatang/` 에 나눠 두었어요. 어느 모듈이 무엇을 하는지는 `jetbatang/__init__.py` 에 적혀 있어요.
 
-Releases 에 올릴 파일은 `./package.sh` 로 `dist/` 에 만들어요. `JetBatangNF-all.zip` 에는 글꼴과
-`install-windows.ps1`, `LICENSE` 가 함께 들어가고, 낱개 `ttf` 와 `install-windows.ps1` 도 따로 나와요.
-`dist/` 의 파일을 모두 올리세요.
+열여섯 종이 모두 만들어지면 `build.sh` 가 어느 코드(`build.py`·`build.sh`·`requirements.txt`·`jetbatang/*.py`)로
+만든 어느 파일인지 `fonts/build-info.json` 에 적어요. 회귀 검사는 이 기록으로 `fonts/` 가 지금 코드로 만든
+것인지 확인해요. 기록이 없는 예전 `fonts/` 에서는 그 검사만 건너뛰어요.
+
+Releases 에 올릴 파일은 `./package.sh` 로 `dist/` 에 만들고, `dist/` 의 파일을 모두 올리면 돼요.
+`JetBatangNF-all.zip` 에는 글꼴과 `install-windows.ps1`, `LICENSE` 가 함께 들어가고, 낱개 `ttf` 와
+`install-windows.ps1`, 파일마다 해시를 적은 `SHA256SUMS` 도 따로 나와요.
+`package.sh` 는 `fonts/` 가 `fonts/build-info.json` 과 맞지 않으면 멈춰요. 코드를 고친 뒤 다시 빌드하지
+않았거나, 빌드가 중간에 실패했거나, 빌드한 뒤 글꼴이 바뀐 경우예요. 그때는 `./build.sh` 를 다시 돌리세요.
 
 ## LICENSE
 
