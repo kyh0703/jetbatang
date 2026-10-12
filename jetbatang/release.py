@@ -67,7 +67,7 @@ def sources_digest(root):
 def pinned_versions(root):
     """REQUIREMENTS 에 고정한 {이름: 판}."""
     pins = {}
-    for line in (Path(root) / REQUIREMENTS).read_text().splitlines():
+    for line in (Path(root) / REQUIREMENTS).read_text(encoding="utf-8").splitlines():
         name, pinned, version = line.split("#", 1)[0].partition("==")
         if pinned:
             pins[name.strip()] = version.strip()
