@@ -24,39 +24,14 @@ EMBOLDEN_SCALE="${EMBOLDEN_SCALE:-1.0}"
 # 굵기마다 따로 도는 build.py 를 동시에 몇 개까지 돌릴지. 하나에 메모리를 350MB 안팎 쓴다.
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
-# 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량
-#
-# RIDIBatang 은 세로획 81 짜리 한 굵기뿐이다. Regular 를 기준으로 삼고, 한글 세로획이
-# 같은 굵기 라틴 세로획의 0.9 배(Regular 의 81 : 90)쯤 되게 한글 가로 굵기를 불리거나
-# 깎는다(음수). 세로는 불릴 때 그 0.4 배, 깎을 때 0.8 배다.
-#   라틴 세로획: Thin 50 / ExtraLight 66 / Light 79 / Regular 90
-#                Medium 99 / SemiBold 108 / Bold 125 / ExtraBold 150
-VARIANTS=(
-  "Thin:Thin:-36"
-  "ThinItalic:Thin Italic:-36"
-  "ExtraLight:ExtraLight:-22"
-  "ExtraLightItalic:ExtraLight Italic:-22"
-  "Light:Light:-10"
-  "LightItalic:Light Italic:-10"
-  "Regular:Regular:0"
-  "Italic:Italic:0"
-  "Medium:Medium:9"
-  "MediumItalic:Medium Italic:9"
-  "SemiBold:SemiBold:18"
-  "SemiBoldItalic:SemiBold Italic:18"
-  "Bold:Bold:36"
-  "BoldItalic:Bold Italic:36"
-  "ExtraBold:ExtraBold:56"
-  "ExtraBoldItalic:ExtraBold Italic:56"
-)
-
 command -v curl >/dev/null || { echo "curl 이 필요합니다"; exit 1; }
 command -v unzip >/dev/null || { echo "unzip 이 필요합니다"; exit 1; }
 python3 -c "import fontTools, pathops" 2>/dev/null || { echo "pip install -r requirements.txt 먼저 하세요"; exit 1; }
-# 원본을 내려받기 전에 버전부터 확인한다. 규칙은 build.py 와 같은 함수 하나로 본다.
-python3 -c 'import sys, build
+# 원본을 내려받기 전에 버전부터 확인한다. 규칙은 build.py 가 쓰는 jetbatang/metadata.py 의 함수 하나로 본다.
+python3 -c 'import sys
+from jetbatang.metadata import font_revision
 try:
-    build.font_revision(sys.argv[1])
+    font_revision(sys.argv[1])
 except ValueError as exc:
     sys.exit(str(exc))' "$VERSION"
 # 빌드 값도 원본을 내려받기 전에 본다. 틀린 값이면 열여섯 종이 모두 같은 오류로 실패한다.
@@ -73,15 +48,17 @@ case "$JOBS" in
   ''|*[!0-9]*) echo "JOBS 는 0 이상의 정수여야 해요: '$JOBS'"; exit 1;;
 esac
 
+# 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량. 목록과 값은 jetbatang/release.py 의 VARIANTS 에 있다.
+variants=$(python3 -c 'from jetbatang.release import VARIANTS
+for variant in VARIANTS:
+    print(*variant, sep=":")')
+VARIANTS=()
+while IFS= read -r variant; do VARIANTS+=("$variant"); done <<< "$variants"
+
 mkdir -p build fonts
 
 sha256() {
-  python3 -c 'import hashlib, sys
-digest = hashlib.sha256()
-with open(sys.argv[1], "rb") as f:
-    for chunk in iter(lambda: f.read(1 << 20), b""):
-        digest.update(chunk)
-print(digest.hexdigest())' "$1"
+  python3 -c 'import sys; from jetbatang.release import sha256_file; print(sha256_file(sys.argv[1]))' "$1"
 }
 
 # url 을 dest 에 받는다. dest 가 이미 있고 SHA-256 이 맞으면 그대로 쓴다. 받는 동안에는

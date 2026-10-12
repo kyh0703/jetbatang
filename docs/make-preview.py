@@ -6,7 +6,13 @@
 
 fonts/ 에 빌드된 ttf 가 있어야 한다.
 """
+import sys
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from jetbatang.release import VARIANTS  # noqa: E402
 
 BG, FG, WHITE = "#17171d", "#eaeaf0", "#ffffff"
 BLUE, GREEN, YELLOW, DIM = "#8ec5ff", "#8bc098", "#ddbd7b", "#6e7681"
@@ -15,8 +21,8 @@ FOLDER, BRANCH, NODE, SEP = "", "", "", ""
 TS, PY, RS, DOCKER = "", "", "", ""
 CHECK, CROSS, WARN, BOLT = "", "", "", ""
 
-WEIGHTS = [("Thin", -36), ("ExtraLight", -22), ("Light", -10), ("Regular", 0),
-           ("Medium", 9), ("SemiBold", 18), ("Bold", 36), ("ExtraBold", 56)]
+# 정체 여덟 굵기와 한글 굵기 증가량. 이탤릭은 굵기가 같아서 뺀다.
+WEIGHTS = [(suffix, embolden) for suffix, style, embolden in VARIANTS if "Italic" not in style]
 
 
 def face(suffix, size):

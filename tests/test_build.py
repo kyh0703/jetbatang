@@ -1,4 +1,4 @@
-"""build.py 회귀 검사. build/ 의 원본 글꼴과 fonts/ 의 빌드 결과가 있어야 돈다(./build.sh).
+"""빌드 회귀 검사. build/ 의 원본 글꼴과 fonts/ 의 빌드 결과가 있어야 돈다(./build.sh).
 
     python3 -m unittest discover tests
 """
@@ -15,14 +15,14 @@ from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 
-import build
+from jetbatang import charset, metadata, outlines, release, scanline, weight
 
 ROOT = Path(__file__).resolve().parent.parent
 DONOR = ROOT / "build" / "RIDIBatang.otf"
 REGULAR = ROOT / "fonts" / "JetBatangNF-Regular.ttf"
 ITALIC = ROOT / "fonts" / "JetBatangNF-Italic.ttf"
 BUILT = sorted((ROOT / "fonts").glob("JetBatangNF-*.ttf"))
-# 대문자 높이로 W 자리에 맞추는 1칸 글자. build.NARROW 와 같은 글자다.
+# 대문자 높이로 W 자리에 맞추는 1칸 글자. charset.NARROW 와 같은 글자다.
 NARROW_SIGNS = "₩℃℉ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹ"
 
 
@@ -110,7 +110,7 @@ class WeightTest(unittest.TestCase):
         # 자꾸 실패하면 음절 수백 자가 Regular 굵기로 남아 Thin 문단이 얼룩지는데, ㅣ 하나만 재는
         # 위 검사로는 모른다. README 는 굵기마다 열네~열여덟 자라고 적었다.
         plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)} if ITALIC.exists() else {False: TTFont(REGULAR)}
-        for suffix in ("Thin", "ExtraLight", "Light", "ThinItalic", "ExtraLightItalic", "LightItalic"):
+        for suffix in [suffix for suffix, _, embolden in release.VARIANTS if embolden < 0]:
             path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
             italic = suffix.endswith("Italic")
             if not path.exists() or italic not in plain:
@@ -139,7 +139,7 @@ class ThinningTest(unittest.TestCase):
         # 가운데 100 정사각형 구멍은 [80, 220] 이 된다.
         square = polygon_glyph([(0, 0), (0, 300), (300, 300), (300, 0)],
                                [(100, 100), (200, 100), (200, 200), (100, 200)])
-        thin = build.thin_copies(square, build.embolden_ring(40, 40))
+        thin = weight.thin_copies(square, weight.embolden_ring(40, 40))
         contours = sorted(thin.contours, key=lambda c: not c.clockwise)
         self.assertEqual([c.clockwise for c in contours], [True, False])
         for contour, box in zip(contours, [(20, 20, 280, 280), (80, 80, 220, 220)]):
@@ -160,11 +160,11 @@ class ThinningTest(unittest.TestCase):
         pen.lineTo((a[0] - 3 * n[0], a[1] - 3 * n[1]))
         pen.closePath()
         square = polygon_glyph([(0, 0), (0, 400), (400, 400), (400, 0)])
-        notched = build.to_glyph(pathops.op(build.glyph_path(square), slit, pathops.PathOp.DIFFERENCE,
-                                            clockwise=True))
-        thin = build.thin_copies(notched, build.embolden_ring(36, 28.8))
-        outside = pathops.op(thin, build.glyph_path(notched), pathops.PathOp.DIFFERENCE)
-        self.assertLess(build.ink(outside), 1)
+        notched = outlines.to_glyph(pathops.op(outlines.glyph_path(square), slit, pathops.PathOp.DIFFERENCE,
+                                               clockwise=True))
+        thin = weight.thin_copies(notched, weight.embolden_ring(36, 28.8))
+        outside = pathops.op(thin, outlines.glyph_path(notched), pathops.PathOp.DIFFERENCE)
+        self.assertLess(weight.ink(outside), 1)
 
 
 @unittest.skipUnless(DONOR.exists(), "build/RIDIBatang.otf 가 없어요. ./build.sh 를 먼저 돌리세요")
@@ -178,26 +178,26 @@ class DonorTest(unittest.TestCase):
     def test_takes_every_wide_glyph_the_donor_has(self):
         # 터미널이 2칸으로 세는 글자를 빠뜨리면 다른 글꼴이 대신 그린다.
         missing = [f"U+{cp:04X}" for cp in sorted(self.cmap)
-                   if unicodedata.east_asian_width(chr(cp)) in "WF" and not build.is_wide(cp)]
+                   if unicodedata.east_asian_width(chr(cp)) in "WF" and not charset.is_wide(cp)]
         self.assertEqual(missing, [])
 
     def test_merged_bold_paints_like_the_overlapped_copies(self):
         # Bold(embolden 36) 에서 skia 두 경로 중 한쪽이 틀리거나 예외를 내던 글자들.
         # 휑 은 OpBuilder 가, 흉 은 simplify 가 속공간을 먹고, 훙 은 simplify 가 예외를 낸다.
-        offsets = build.embolden_ring(36, 36 * 0.4)
+        offsets = weight.embolden_ring(36, 36 * 0.4)
         for ch in "휑흉훙":
             with self.subTest(ch=ch):
                 name = self.cmap[ord(ch)]
                 dx = (1200 - self.donor["hmtx"][name][0]) / 2.0
-                src = build.outline(self.glyphs[name], Transform(1, 0, 0, 1, dx, 60), 1.0)
-                merged = build.merge_copies(src, offsets)
+                src = outlines.outline(self.glyphs[name], Transform(1, 0, 0, 1, dx, 60), 1.0)
+                merged = weight.merge_copies(src, offsets)
                 self.assertIsNotNone(merged)
 
-                truth = build.coverage(build.stacked(src, offsets))
-                got = build.coverage(build.stacked(merged, [(0, 0)]))
+                truth = scanline.coverage(weight.stacked(src, offsets))
+                got = scanline.coverage(weight.stacked(merged, [(0, 0)]))
                 # 저장하며 좌표를 정수로 반올림해 외곽선이 반 단위까지 움직인다(1.6e-3 안팎).
                 # 속공간을 먹은 합집합은 2.6e-2 넘게 어긋난다.
-                self.assertLess(build.mismatch(truth, got), build.painted(truth) * 5e-3)
+                self.assertLess(scanline.mismatch(truth, got), scanline.painted(truth) * 5e-3)
 
 
 @unittest.skipUnless(REGULAR.exists(), "fonts/JetBatangNF-Regular.ttf 가 없어요. ./build.sh 를 먼저 돌리세요")
@@ -539,20 +539,20 @@ class VersionTest(unittest.TestCase):
         # 같은 글꼴이 두 벌 깔리면 fontconfig 는 fontRevision 이 큰 쪽을 고른다. v1.0.0~v1.4.0 은
         # base JetBrains Mono 의 2.304 를 물려받았으니, 새 판은 모두 그보다 커야 옛 판을 이긴다.
         tags = ["1.0.0", "1.4.0", "1.4.1", "1.9.0", "1.10.0", "2.0.0"]
-        fixed = [round(2.304 * 65536)] + [round(build.font_revision(tag) * 65536) for tag in tags]
+        fixed = [round(2.304 * 65536)] + [round(metadata.font_revision(tag) * 65536) for tag in tags]
         self.assertEqual(fixed, sorted(set(fixed)))
 
     def test_font_revision_rejects_what_it_cannot_order(self):
         for bad in ["1.5", "v1.5.0", "1.100.0", "1.5.100"]:
             with self.subTest(version=bad), self.assertRaises(ValueError):
-                build.font_revision(bad)
+                metadata.font_revision(bad)
 
     def test_font_revision_rejects_values_that_cannot_be_saved(self):
         # head.fontRevision 은 부호 있는 16.16 고정소수다. 정수부가 32768 이면 저장할 수 없다.
-        self.assertAlmostEqual(build.font_revision("327.67.99"), 32767.99)
+        self.assertAlmostEqual(metadata.font_revision("327.67.99"), 32767.99)
         for bad in ["327.68.0", "328.0.0"]:
             with self.subTest(version=bad), self.assertRaises(ValueError):
-                build.font_revision(bad)
+                metadata.font_revision(bad)
 
     @unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
     def test_every_face_reports_one_release_version(self):
@@ -563,11 +563,21 @@ class VersionTest(unittest.TestCase):
                 font = TTFont(path)
                 found = re.fullmatch(r"Version (\d+\.\d+\.\d+)", font["name"].getDebugName(5) or "")
                 self.assertIsNotNone(found, "nameID 5 가 'Version X.Y.Z' 가 아니다")
-                self.assertAlmostEqual(font["head"].fontRevision, build.font_revision(found[1]),
+                self.assertAlmostEqual(font["head"].fontRevision, metadata.font_revision(found[1]),
                                        delta=1 / 65536)
                 versions.add(found[1])
         self.assertEqual(len(versions), 1, versions)
 
+
+class ReleaseTest(unittest.TestCase):
+    def test_windows_installer_knows_every_face(self):
+        # install-windows.ps1 은 Releases 에 따로 올라가 jetbatang/release.py 의 VARIANTS 를 읽지 못해서
+        # 굵기 목록을 따로 들고 있다. 목록에 없는 굵기는 설치도 제거도 되지 않는다.
+        script = (ROOT / "install-windows.ps1").read_text(encoding="utf-8-sig")
+        listed = dict(re.findall(r"'(JetBatangNF-\w+\.ttf)'\s*=\s*'([^']+)'", script))
+        expected = {f"JetBatangNF-{suffix}.ttf": f"JetBatang NF {style} (TrueType)"
+                    for suffix, style, _ in release.VARIANTS}
+        self.assertEqual(listed, expected)
 
 
 if __name__ == "__main__":
