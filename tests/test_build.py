@@ -15,10 +15,11 @@ import pathops
 import uharfbuzz as hb
 from fontTools.misc.transform import Transform
 from fontTools.pens.boundsPen import BoundsPen
+from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 
-from jetbatang import charset, metadata, outlines, release, scanline, weight
+from jetbatang import charset, kana, metadata, outlines, release, scanline, weight
 
 ROOT = Path(__file__).resolve().parent.parent
 DONOR = ROOT / "build" / "RIDIBatang.otf"
@@ -47,10 +48,12 @@ def ink(glyphs, name):
     return pen.bounds
 
 
-def section(glyphs, name, y):
-    """y 높이에서 가로로 자른 잉크 구간 [[x0, x1], ...]. 붙은 구간은 하나로 센다."""
+def section(glyphs, name, y, swap=False):
+    """y 높이에서 가로로 자른 잉크 구간 [[x0, x1], ...]. 붙은 구간은 하나로 센다. swap 이면 x·y 를 바꿔
+    그려서, x=y 자리에서 세로로 자른 [[y0, y1], ...] 이 된다."""
     path = pathops.Path()
-    glyphs[name].draw(path.getPen(glyphSet=glyphs))
+    pen = path.getPen(glyphSet=glyphs)
+    glyphs[name].draw(TransformPen(pen, (0, 1, 1, 0, 0, 0)) if swap else pen)
     band = pathops.Path()
     pen = band.getPen()
     pen.moveTo((-2000, y))
@@ -125,6 +128,38 @@ class WeightTest(unittest.TestCase):
             with self.subTest(font=suffix):
                 self.assertLessEqual(len(same), 20, "".join(same))
 
+    def test_horizontal_strokes_follow_the_vertical_weight_rule(self):
+        # 가로획은 불릴 때 가로 증가량의 0.4 배, 깎을 때 0.8 배만큼 바뀐다(README). 위아래로 반씩, 정수로
+        # 반올림해 옮긴다. 이 비율이 빠지면 Thin 의 가로획이 세로획보다 굵어지고, Bold 의 가로획은 흐려진다.
+        def bar(path):
+            font = TTFont(path)
+            cmap, glyphs = font.getBestCmap(), font.getGlyphSet()
+            x0, _, x1, _ = ink(glyphs, cmap[0x3161])           # ㅡ
+            (y0, y1), = section(glyphs, cmap[0x3161], (x0 + x1) / 2, swap=True)
+            return y1 - y0
+
+        regular = bar(REGULAR)
+        for suffix, _, embolden in release.VARIANTS:
+            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            if not path.exists():
+                continue
+            ey = embolden * (0.4 if embolden > 0 else 0.8)
+            with self.subTest(font=suffix):
+                self.assertAlmostEqual(bar(path), regular + 2 * round(ey / 2), delta=1)
+
+    def test_bold_faces_merge_the_overlapping_copies(self):
+        # 불린 한글은 겹친 복사본을 외곽선 하나로 합친다. 합치지 못하고 겹친 채 둔 글자는 macOS 에서 획
+        # 가장자리가 번지는데 FreeType 에서는 티가 안 난다. 경계 연산이 자꾸 틀려 그런 글자가 늘면 여기서 막는다.
+        for suffix, _, embolden in release.VARIANTS:
+            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            if embolden <= 0 or not path.exists():
+                continue
+            font = TTFont(path)
+            cmap, glyf = font.getBestCmap(), font["glyf"]
+            left = [chr(cp) for cp in range(0xAC00, 0xD7A4) if glyf[cmap[cp]].isComposite()]
+            with self.subTest(font=suffix):
+                self.assertLessEqual(len(left), 20, "".join(left))
+
 
 def polygon_glyph(*contours):
     pen = TTGlyphPen(None)
@@ -170,6 +205,27 @@ class ThinningTest(unittest.TestCase):
         self.assertLess(weight.ink(outside), 1)
 
 
+class ScanlineTest(unittest.TestCase):
+    # 경계 연산 결과는 scanline 으로 직접 칠한 정답과 견주어 고른다. 이 정답이 틀리면 속공간을 먹은
+    # 합집합도 통과해서, Bold 의 ㅇ 이 까맣게 메워진 채 나간다.
+    RING = [(0, 0), (0, 300), (300, 300), (300, 0)], [(100, 100), (200, 100), (200, 200), (100, 200)]
+
+    def test_coverage_paints_by_the_nonzero_rule(self):
+        ring = scanline.coverage(outlines.glyph_path(polygon_glyph(*self.RING)))
+        full = scanline.coverage(outlines.glyph_path(polygon_glyph(self.RING[0])))
+        self.assertEqual(scanline.painted(ring), 300 * 300 - 100 * 100)
+        self.assertEqual(scanline.mismatch(ring, full), 100 * 100)
+        self.assertEqual(scanline.mismatch(ring, ring), 0)
+
+    def test_union_check_rejects_a_union_that_ate_the_counter(self):
+        ring, offsets = polygon_glyph(*self.RING), [(-5, 0), (5, 0)]
+        eaten = outlines.glyph_path(polygon_glyph([(-5, 0), (-5, 300), (305, 300), (305, 0)]))
+        right = outlines.glyph_path(polygon_glyph([(-5, 0), (-5, 300), (305, 300), (305, 0)],
+                                                  [(105, 100), (195, 100), (195, 200), (105, 200)]))
+        self.assertIsNone(weight.painted_like_stack(ring, offsets, [eaten]))
+        self.assertIs(weight.painted_like_stack(ring, offsets, [eaten, right]), right)
+
+
 @unittest.skipUnless(DONOR.exists(), "build/RIDIBatang.otf 가 없어요. ./build.sh 를 먼저 돌리세요")
 class DonorTest(unittest.TestCase):
     @classmethod
@@ -201,6 +257,61 @@ class DonorTest(unittest.TestCase):
                 # 저장하며 좌표를 정수로 반올림해 외곽선이 반 단위까지 움직인다(1.6e-3 안팎).
                 # 속공간을 먹은 합집합은 2.6e-2 넘게 어긋난다.
                 self.assertLess(scanline.mismatch(truth, got), scanline.painted(truth) * 5e-3)
+
+
+@unittest.skipUnless(DONOR.exists() and BUILT, "build/RIDIBatang.otf 나 fonts/ 가 없어요. ./build.sh 를 먼저 돌리세요")
+class CoverageTest(unittest.TestCase):
+    def test_every_face_maps_every_donor_character_at_its_cell_width(self):
+        # 빠진 글자는 터미널이 다른 글꼴로 그리고, 폭이 2칸이 아니면 격자가 어긋난다. 결합 탁점·반탁점은
+        # 앞 글자에 얹혀 폭이 0 이다.
+        donor = TTFont(DONOR).getBestCmap()
+        wide = ({cp for cp in donor if charset.is_wide(cp)} | set(charset.ALIASES)
+                | ({*kana.VOICED, *kana.SMALL, *kana.SPACING_MARKS} - set(donor)))
+        marks = {0x3099, 0x309A}
+        for path in BUILT:
+            font = TTFont(path)
+            cmap, hmtx = font.getBestCmap(), font["hmtx"]
+            with self.subTest(font=path.stem):
+                self.assertEqual(sorted(cp for cp in wide | marks if cp not in cmap), [])
+                width = {cp: hmtx[cmap[cp]][0] for cp in wide | marks}
+                self.assertEqual({cp: w for cp, w in width.items() if w != (0 if cp in marks else 1200)}, {})
+
+
+@unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+class NameTest(unittest.TestCase):
+    # README WEIGHTS 표의 'GDI 방식 앱의 가족 이름'. Bold 만 RIBBI 의 Bold 칸을 쓴다.
+    GDI_FAMILY = {"Thin": "JetBatang NF Thin", "ExtraLight": "JetBatang NF ExtraLight",
+                  "Light": "JetBatang NF Light", "Regular": "JetBatang NF", "Medium": "JetBatang NF Medium",
+                  "SemiBold": "JetBatang NF SemiBold", "Bold": "JetBatang NF", "ExtraBold": "JetBatang NF ExtraBold"}
+
+    def test_names_follow_the_weight_table(self):
+        # 앱은 nameID 1/2(GDI) 나 16/17(굵기를 따로 고르는 앱)로 굵기를 찾고, install-windows.ps1 은 nameID 4
+        # 를 레지스트리 이름으로 쓴다. 상표 기록(nameID 7)은 원본에서 물려받지 않는다.
+        for suffix, style, _ in release.VARIANTS:
+            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            if not path.exists():
+                continue
+            names = TTFont(path)["name"]
+            italic = style.endswith("Italic")
+            weight_name = style.removesuffix("Italic").strip() or "Regular"
+            bold = weight_name == "Bold"
+            subfamily = {(False, False): "Regular", (False, True): "Italic",
+                         (True, False): "Bold", (True, True): "Bold Italic"}[bold, italic]
+            with self.subTest(font=suffix):
+                self.assertEqual((names.getDebugName(1), names.getDebugName(2)),
+                                 (self.GDI_FAMILY[weight_name], subfamily))
+                self.assertEqual(names.getDebugName(4), f"JetBatang NF {style}")
+                self.assertEqual((names.getDebugName(16), names.getDebugName(17)), ("JetBatang NF", style))
+                self.assertIsNone(names.getDebugName(7))
+
+    def test_every_face_tells_windows_it_covers_hangul(self):
+        # OS/2 의 Hangul Syllables 범위(56 번)와 949·1361 코드 페이지가 없으면 Windows 가 한글 글꼴로 고르지 않는다.
+        for path in BUILT:
+            os2 = TTFont(path)["OS/2"]
+            with self.subTest(font=path.stem):
+                self.assertEqual(os2.ulUnicodeRange2 >> (56 - 32) & 1, 1)
+                self.assertEqual(os2.ulCodePageRange1 >> 19 & 1, 1)
+                self.assertEqual(os2.ulCodePageRange1 >> 21 & 1, 1)
 
 
 @unittest.skipUnless(REGULAR.exists(), "fonts/JetBatangNF-Regular.ttf 가 없어요. ./build.sh 를 먼저 돌리세요")
