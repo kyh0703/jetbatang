@@ -181,12 +181,23 @@ NFD 를 지원하고, 호환 자모 `ㄱㅏ` 는 조합하지 않아요. 원본�
 
 ## BUILD
 
-`fontTools` 와 `skia-pathops` 가 필요해요. 원본 글꼴은 스크립트가 알아서 내려받아요.
+`fontTools` 와 `skia-pathops` 가 필요해요. 두 라이브러리의 버전이 다르면 같은 코드로도 글꼴이 달라질 수
+있어서 `requirements.txt` 에 버전을 고정해 뒀어요. 가상환경에 설치하세요.
 
 ```sh
-pip install fonttools skia-pathops
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
 VERSION=1.6.0 ./build.sh
 ```
+
+`uv` 가 있으면 가상환경을 만들지 않고 `VERSION=1.6.0 uv run --no-project --with-requirements requirements.txt ./build.sh`
+로 돌려도 돼요.
+
+원본 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
+다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `RIDI_SHA256` 이나
+`NERD_PINNED_SHA256` 을 고치세요. `NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의
+`SHA-256.txt` 로 확인하고, 판을 바꾸면 베이스 글꼴도 새로 받아요. 예전 `build.sh` 로 받아 둔 `build/` 에서는
+처음 한 번 Nerd Font 를 다시 받아요.
 
 `VERSION` 은 글꼴 정보에 찍히는 버전이라 꼭 넘겨야 해요. 릴리스 태그(`v1.6.0`)와 같은 값을 쓰세요.
 빠졌거나 `X.Y.Z` 꼴이 아니면 원본을 내려받기 전에 멈춰요. 기본값에 기대어 이전 버전으로 빌드하는
@@ -194,11 +205,12 @@ VERSION=1.6.0 ./build.sh
 글꼴 내부 버전값의 표현 범위 때문에 `Y`·`Z` 는 0~99, 버전의 상한은 `327.67.99` 예요.
 
 결과는 `fonts/JetBatangNF-*.ttf` 열여섯 개예요. 빌드한 다음 아래 명령으로 회귀 검사를 돌려요.
-`uharfbuzz` 는 검사에서 NFD 문자열을 실제로 조합하는 데 쓰고, 글꼴 빌드에는 필요하지 않아요.
+`requirements.txt` 의 `uharfbuzz` 는 검사에서 NFD 문자열을 실제로 조합하는 데 써요. 빌드할 때도 설치돼 있으면
+fontTools 가 GSUB 를 harfbuzz 로 배치해서, 없을 때와 동작은 같지만 파일 바이트가 달라져요. 릴리스는
+`requirements.txt` 를 모두 설치한 환경에서 빌드하세요.
 굵기 검사는 기본값으로 빌드했다고 보고 재요. `EMBOLDEN_SCALE` 같은 빌드 값을 바꾸면 실패할 수 있어요.
 
 ```sh
-pip install uharfbuzz
 python3 -m unittest discover tests
 ```
 
