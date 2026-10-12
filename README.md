@@ -35,7 +35,7 @@ if (상태 === "완료") return "성공";
 
 [Releases](../../releases) 에서 원하는 굵기의 `ttf` 나 `JetBatangNF-all.zip` 을 받으세요.
 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 글꼴 파일이 없어요.
-설치한 판은 글꼴 정보의 버전(`Version 1.6.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
+설치한 판은 글꼴 정보의 버전(`Version 1.7.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
 릴리스에 `SHA256SUMS` 가 있으면 받은 파일이 있는 폴더에서 파일이 온전한지 확인할 수 있어요. 파일마다 `OK` 가
 나오면 돼요.
 
@@ -209,10 +209,10 @@ NFD 를 지원하고, 호환 자모 `ㄱㅏ` 는 조합하지 않아요. 원본�
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-VERSION=1.6.0 ./build.sh
+VERSION=1.7.0 ./build.sh
 ```
 
-`uv` 가 있으면 가상환경을 만들지 않고 `VERSION=1.6.0 uv run --no-project --with-requirements requirements.txt ./build.sh`
+`uv` 가 있으면 가상환경을 만들지 않고 `VERSION=1.7.0 uv run --no-project --with-requirements requirements.txt ./build.sh`
 로 돌려도 돼요. 이때는 회귀 검사도 `uv run --no-project --with-requirements requirements.txt python3 -m unittest discover tests`
 로 돌려요.
 
@@ -226,7 +226,7 @@ VERSION=1.6.0 ./build.sh
 `NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의 `SHA-256.txt` 로 확인하고, 판을 바꾸면
 베이스 글꼴도 새로 받아요. 예전 `build.sh` 로 받아 둔 `build/` 에서는 처음 한 번 Nerd Font 를 다시 받거나 다시 풀어요.
 
-`VERSION` 은 글꼴 정보에 찍히는 버전이라 꼭 넘겨야 해요. 릴리스 태그(`v1.6.0`)와 같은 값을 쓰세요.
+`VERSION` 은 글꼴 정보에 찍히는 버전이라 꼭 넘겨야 해요. 릴리스 태그(`v1.7.0`)와 같은 값을 쓰세요.
 빠졌거나 `X.Y.Z` 꼴이 아니면 원본을 내려받기 전에 멈춰요. 기본값에 기대어 이전 버전으로 빌드하는
 일을 막으려고 매번 릴리스 버전을 직접 지정하게 했어요. 이전 값을 다시 넘기는 것까지 막지는 못해요.
 글꼴 내부 버전값의 표현 범위 때문에 `Y`·`Z` 는 0~99, 버전의 상한은 `327.67.99` 예요.
@@ -244,13 +244,13 @@ python3 -m unittest discover tests
 빌드하면 그 값이 빌드 기록에 남고, `package.sh` 가 묶을 때 경고해요.
 
 ```sh
-VERSION=1.6.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로
-VERSION=1.6.0 EMBOLDEN_SCALE=1.25 ./build.sh     # 한글 굵기 증가량(가는 판은 깎는 양)을 25% 더
-VERSION=1.6.0 JOBS=4 ./build.sh                  # 동시에 만드는 굵기 수 줄이기(기본은 CPU 수)
-VERSION=1.6.0 FAMILY="MyBatang NF" ./build.sh    # 글꼴 이름 바꾸기
+VERSION=1.7.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로
+VERSION=1.7.0 EMBOLDEN_SCALE=1.25 ./build.sh     # 한글 굵기 증가량(가는 판은 깎는 양)을 25% 더
+VERSION=1.7.0 JOBS=4 ./build.sh                  # 동시에 만드는 굵기 수 줄이기(기본은 CPU 수)
+VERSION=1.7.0 FAMILY="MyBatang NF" ./build.sh    # 글꼴 이름 바꾸기
 
 # 바탕 Nerd Font (기본값)
-VERSION=1.6.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./build.sh
+VERSION=1.7.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./build.sh
 ```
 
 한 종씩 세밀하게 조절하려면 `python3 build.py --help` 를 보세요. `build.py` 는 명령줄 입구이고, 글꼴을 합치는

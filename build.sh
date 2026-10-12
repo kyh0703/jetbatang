@@ -33,7 +33,7 @@ NERD_PINNED_SHA256="fab782a66f7d3019da64f6572db9fc5d3a4bcb19f9fa13e2d8a62e3693d6
 # 글꼴 정보에 찍히는 릴리스 버전. 릴리스 태그(vX.Y.Z)와 같은 값을 매번 넘긴다. 기본값을 두면
 # 다음 릴리스에서 올리는 걸 잊어도 빌드가 돌아서, 다른 글꼴이 같은 버전으로 나간다.
 VERSION="${VERSION:-}"
-[ -n "$VERSION" ] || { echo "VERSION 을 지정하세요. 예: VERSION=1.6.0 ./build.sh"; exit 1; }
+[ -n "$VERSION" ] || { echo "VERSION 을 지정하세요. 예: VERSION=1.7.0 ./build.sh"; exit 1; }
 # 굵기마다 따로 도는 build.py 를 동시에 몇 개까지 돌릴지. 하나에 메모리를 350MB 안팎 쓴다.
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
