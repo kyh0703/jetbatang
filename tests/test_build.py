@@ -111,22 +111,29 @@ class WeightTest(unittest.TestCase):
             with self.subTest(font=path.stem):
                 self.assertAlmostEqual(ratio(path), regular, delta=0.05)
 
-    def test_thin_faces_leave_few_syllables_at_regular_weight(self):
-        # 깎다가 획이 끊기는 글자만 Regular 굵기로 남는다. 경계 연산 라이브러리가 바뀌어 검증이
-        # 자꾸 실패하면 음절 수백 자가 Regular 굵기로 남아 Thin 문단이 얼룩지는데, ㅣ 하나만 재는
-        # 위 검사로는 모른다. README 는 굵기마다 열네~열여덟 자라고 적었다.
+    def test_thin_faces_thin_almost_every_syllable(self):
+        # 깎다가 획이 끊기는 글자는 덜 깎거나 Regular 굵기로 둔다. 경계 연산 라이브러리가 바뀌어 검증이
+        # 자꾸 실패하면 음절 수백 자가 덜 깎이거나 Regular 굵기로 남아 Thin 문단이 얼룩지는데, ㅣ 하나만
+        # 재는 위 검사로는 모른다. README 는 Regular 굵기로 남는 글자가 굵기마다 열네~열여덟 자라고 적었다.
+        # 다 깎으면 잉크 상자가 좌우로 가로 증가량만큼 줄어든다. 그 7/8 도 줄지 않았으면 덜 깎은 글자로 센다.
         plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)} if ITALIC.exists() else {False: TTFont(REGULAR)}
-        for suffix in [suffix for suffix, _, embolden in release.VARIANTS if embolden < 0]:
+        for suffix, _, embolden in release.VARIANTS:
             path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
             italic = suffix.endswith("Italic")
-            if not path.exists() or italic not in plain:
+            if embolden >= 0 or not path.exists() or italic not in plain:
                 continue
             font, reference = TTFont(path), plain[italic]
             cmap, rcmap = font.getBestCmap(), reference.getBestCmap()
-            same = [chr(cp) for cp in range(0xAC00, 0xD7A4)
-                    if font["glyf"][cmap[cp]].coordinates == reference["glyf"][rcmap[cp]].coordinates]
+            same, barely = [], []
+            for cp in range(0xAC00, 0xD7A4):
+                glyph, regular = font["glyf"][cmap[cp]], reference["glyf"][rcmap[cp]]
+                if glyph.coordinates == regular.coordinates:
+                    same.append(chr(cp))
+                if (regular.xMax - regular.xMin) - (glyph.xMax - glyph.xMin) < 2 * round(-embolden / 2) * 7 / 8:
+                    barely.append(chr(cp))
             with self.subTest(font=suffix):
                 self.assertLessEqual(len(same), 20, "".join(same))
+                self.assertLessEqual(len(barely), 11172 * 0.03, "".join(barely))
 
     def test_horizontal_strokes_follow_the_vertical_weight_rule(self):
         # 가로획은 불릴 때 가로 증가량의 0.4 배, 깎을 때 0.8 배만큼 바뀐다(README). 위아래로 반씩, 정수로
