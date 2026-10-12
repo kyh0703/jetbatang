@@ -546,7 +546,8 @@ class VersionTest(unittest.TestCase):
         self.assertEqual(fixed, sorted(set(fixed)))
 
     def test_font_revision_rejects_what_it_cannot_order(self):
-        for bad in ["1.5", "v1.5.0", "1.100.0", "1.5.100"]:
+        # 전각 숫자(IME 로 친 １.６.０)도 X.Y.Z 로 받으면 nameID 5 의 Mac 기록을 저장하다 실패한다.
+        for bad in ["1.5", "v1.5.0", "1.100.0", "1.5.100", "１.６.０"]:
             with self.subTest(version=bad), self.assertRaises(ValueError):
                 metadata.font_revision(bad)
 

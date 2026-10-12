@@ -18,7 +18,8 @@ def font_revision(version):
     정수부에, Z 를 소수부에 넣는다. 1.5.0 은 105.00, 1.10.2 는 110.02 다.
     부호 있는 16.16 고정소수에 들어가야 하므로 상한은 327.67.99 다.
     """
-    found = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    # \d 는 전각 숫자도 받아서 [0-9] 로 쓴다. １.６.０ 은 Mac 이름 기록으로 저장할 수 없다.
+    found = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)", version)
     if not found or int(found[2]) > 99 or int(found[3]) > 99:
         raise ValueError(f"버전은 X.Y.Z 꼴이고 Y·Z 는 0~99 여야 해요: {version!r}")
     major, minor, patch = map(int, found.groups())
