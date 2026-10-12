@@ -123,14 +123,15 @@ def font_files():
     return [f"JetBatangNF-{suffix}.ttf" for suffix, _, _ in VARIANTS]
 
 
-def write_manifest(root, version, started):
-    """열여섯 종을 다 만든 뒤 기록을 남긴다. started 는 빌드를 시작할 때 잡은 snapshot 이다. 그사이에
-    코드가 바뀌었으면 어느 코드로 만든 글꼴인지 알 수 없어서, 기록하지 않고 ValueError."""
+def write_manifest(root, version, started, custom=()):
+    """열여섯 종을 다 만든 뒤 기록을 남긴다. started 는 빌드를 시작할 때 잡은 snapshot 이고, custom 은
+    기본값과 다르게 준 빌드 값("SCALE=1.05" 꼴)이다. 그사이에 코드가 바뀌었으면 어느 코드로 만든 글꼴인지
+    알 수 없어서, 기록하지 않고 ValueError."""
     if sources_digest(root) != started["sources"]:
         raise ValueError("빌드하는 동안 코드가 바뀌었어요. ./build.sh 로 다시 빌드하세요")
     fonts = Path(root) / "fonts"
     info = {"version": version, "sources": started["sources"], "libraries": started["libraries"],
-            "fonts": {name: sha256_file(fonts / name) for name in font_files()}}
+            "custom": list(custom), "fonts": {name: sha256_file(fonts / name) for name in font_files()}}
     # 쓰다 멈춰도 반쯤 쓴 기록이 남지 않게 다 쓴 뒤에 바꿔 넣는다.
     part = fonts / (MANIFEST + ".part")
     part.write_text(json.dumps(info, indent=2) + "\n")
@@ -150,7 +151,7 @@ def verify_manifest(root):
         info = None
     if not (isinstance(info, dict) and isinstance(info.get("version"), str)
             and isinstance(info.get("sources"), str) and isinstance(info.get("libraries"), dict)
-            and isinstance(info.get("fonts"), dict)):
+            and isinstance(info.get("custom"), list) and isinstance(info.get("fonts"), dict)):
         raise ValueError(f"fonts/{MANIFEST} 를 읽을 수 없어요. {rebuild}")
     if info["sources"] != sources_digest(root):
         raise ValueError(f"fonts/ 는 지금과 다른 {'·'.join(SOURCES)} 로 만들었어요. {rebuild}")
@@ -160,3 +161,11 @@ def verify_manifest(root):
         if not (fonts / name).exists() or sha256_file(fonts / name) != digest:
             raise ValueError(f"fonts/{name} 가 빌드한 뒤에 바뀌었거나 없어요. {rebuild}")
     return info
+
+
+def custom_build_warnings(info):
+    """기본값과 다른 빌드 값으로 만든 기록이면 경고 한 줄. package.sh 가 찍는다. 릴리스는 기본값으로 만든다."""
+    if not info["custom"]:
+        return []
+    return [f"경고: 기본값과 다른 빌드 값({', '.join(info['custom'])})으로 만든 fonts/ 예요. "
+            "릴리스는 기본값으로 빌드하세요"]

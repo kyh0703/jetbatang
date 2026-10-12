@@ -3,9 +3,26 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-NERD_VERSION="${NERD_VERSION:-v3.5.1}"
-NERD_FAMILY="${NERD_FAMILY:-JetBrainsMono}"
-BASE_PREFIX="${BASE_PREFIX:-JetBrainsMonoNerdFontMono}"
+# 빌드 값과 그 기본값. 환경 변수로 바꿀 수 있다. 릴리스는 기본값으로 만든다. 기본값과 다른 값은
+# 빌드 기록에 남아 package.sh 가 알린다.
+DEFAULTS=(
+  "NERD_VERSION=v3.5.1"
+  "NERD_FAMILY=JetBrainsMono"
+  "BASE_PREFIX=JetBrainsMonoNerdFontMono"
+  "FAMILY=JetBatang NF"
+  "SCALE=1.00"
+  "YSHIFT=60"
+  "EMBOLDEN_SCALE=1.0"
+)
+custom=()
+for setting in "${DEFAULTS[@]}"; do
+  name=${setting%%=*} default=${setting#*=}
+  if [ -z "${!name:-}" ]; then
+    printf -v "$name" '%s' "$default"
+  elif [ "${!name}" != "$default" ]; then
+    custom+=("$name=${!name}")
+  fi
+done
 RIDI_URL="https://ridicorp.com/wp-content/themes/ridicorp/css/font/RIDIBatang.otf"
 # 재료의 SHA-256. 원본이 바뀌면 같은 코드로도 다른 글꼴이 나오니, 받은 파일이 이 값과 다르면
 # 멈춘다. 새 원본을 쓰려면 바뀐 내용을 확인하고 이 값을 고친다.
@@ -13,14 +30,10 @@ RIDI_SHA256="f13a49c0815d254ac15e392953a0b056613dec08ceb378e54eeed14c4fda9a54"
 # 기본 Nerd Font 판은 해시를 고정한다. 다른 판이나 가족을 고르면 그 릴리스의 SHA-256.txt 로 본다.
 NERD_PINNED="v3.5.1/JetBrainsMono.zip"
 NERD_PINNED_SHA256="fab782a66f7d3019da64f6572db9fc5d3a4bcb19f9fa13e2d8a62e3693d6396e"
-FAMILY="${FAMILY:-JetBatang NF}"
 # 글꼴 정보에 찍히는 릴리스 버전. 릴리스 태그(vX.Y.Z)와 같은 값을 매번 넘긴다. 기본값을 두면
 # 다음 릴리스에서 올리는 걸 잊어도 빌드가 돌아서, 다른 글꼴이 같은 버전으로 나간다.
 VERSION="${VERSION:-}"
 [ -n "$VERSION" ] || { echo "VERSION 을 지정하세요. 예: VERSION=1.6.0 ./build.sh"; exit 1; }
-SCALE="${SCALE:-1.00}"
-YSHIFT="${YSHIFT:-60}"
-EMBOLDEN_SCALE="${EMBOLDEN_SCALE:-1.0}"
 # 굵기마다 따로 도는 build.py 를 동시에 몇 개까지 돌릴지. 하나에 메모리를 350MB 안팎 쓴다.
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
 
@@ -175,13 +188,13 @@ python3 -c 'import pathlib; from jetbatang.release import MANIFEST; pathlib.Path
 echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE, jobs=$JOBS)"
 printf '%s\n' "${VARIANTS[@]}" | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} ||
   { echo "빌드에 실패한 굵기가 있어요. 위 로그를 확인하세요"; exit 1; }
-# 열여섯 종이 모두 끝났을 때만 어느 코드로 만든 어느 파일인지 적는다. package.sh 와 검사가 이걸 본다.
+# 열여섯 종이 모두 끝났을 때만 어느 코드와 빌드 값으로 만든 어느 파일인지 적는다. package.sh 와 검사가 이걸 본다.
 python3 -c 'import json, sys
 from jetbatang.release import write_manifest
 try:
-    write_manifest(".", sys.argv[1], json.loads(sys.argv[2]))
+    write_manifest(".", sys.argv[1], json.loads(sys.argv[2]), sys.argv[3:])
 except ValueError as exc:
-    sys.exit(str(exc))' "$VERSION" "$started"
+    sys.exit(str(exc))' "$VERSION" "$started" ${custom[@]+"${custom[@]}"}
 
 echo
 echo "완료. fonts/ 를 확인하세요."

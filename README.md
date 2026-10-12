@@ -239,7 +239,8 @@ python3 -m unittest discover tests
 
 빌드 값을 바꿀 때도 `VERSION` 은 같이 넘겨요. `SCALE`·`YSHIFT`·`EMBOLDEN_SCALE` 이 숫자가 아니거나 `JOBS` 가
 0 이상의 정수가 아니면 원본을 내려받기 전에 멈춰요. 굵기 목록과 굵기마다의 한글 굵기 증가량은
-`jetbatang/release.py` 의 `VARIANTS` 에 있어요.
+`jetbatang/release.py` 의 `VARIANTS` 에 있어요. 릴리스는 기본값으로 만들어요. 아래처럼 기본값과 다른 값으로
+빌드하면 그 값이 빌드 기록에 남고, `package.sh` 가 묶을 때 경고해요.
 
 ```sh
 VERSION=1.6.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로
