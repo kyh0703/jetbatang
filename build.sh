@@ -92,14 +92,21 @@ fetch() {
 
 fetch RIDIBatang "$RIDI_URL" build/RIDIBatang.otf "$RIDI_SHA256"
 
-# 풀어 둔 베이스 글꼴이 어느 판의 어느 zip 에서 나왔는지 build/$BASE_PREFIX.source 에 적는다.
-# 파일 이름에는 판이 없어서, 이 기록 없이는 NERD_VERSION 을 바꿔도 예전 베이스로 빌드된다.
+# 풀어 둔 베이스 글꼴이 어느 판의 어느 zip(SHA-256) 에서 나왔는지 build/$BASE_PREFIX.source 에 적는다.
+# 파일 이름에는 판이 없어서, 이 기록 없이는 NERD_VERSION 을 바꿔도 예전 베이스로 빌드된다. 기본 판은
+# 해시까지 보아서 NERD_PINNED_SHA256 을 고치면 다시 푼다. 다른 판은 해시를 알려면 내려받아야 해서 판만 본다.
 nerd_source="$NERD_VERSION/$NERD_FAMILY.zip"
 nerd_stamp="build/$BASE_PREFIX.source"
 
 base_ready() {
-  local variant
-  [ -f "$nerd_stamp" ] && [ "$(cat "$nerd_stamp")" = "$nerd_source" ] || return 1
+  local variant stamp
+  [ -f "$nerd_stamp" ] || return 1
+  stamp=$(cat "$nerd_stamp")
+  if [ "$nerd_source" = "$NERD_PINNED" ]; then
+    [ "$stamp" = "$NERD_PINNED $NERD_PINNED_SHA256" ] || return 1
+  else
+    [ "${stamp%% *}" = "$nerd_source" ] || return 1
+  fi
   for variant in "${VARIANTS[@]}"; do
     [ -f "build/$BASE_PREFIX-${variant%%:*}.ttf" ] || return 1
   done
@@ -129,7 +136,7 @@ if ! base_ready; then
   done
   mv build/nerd.part/*.ttf build/
   rm -rf build/nerd.part
-  echo "$nerd_source" > "$nerd_stamp"
+  echo "$nerd_source $nerd_sha256" > "$nerd_stamp"
 fi
 
 # 한 종을 만들고 로그를 한 번에 찍는다. 동시에 도는 다른 종의 로그와 줄이 섞이지 않게 한다.

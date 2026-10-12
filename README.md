@@ -211,9 +211,9 @@ VERSION=1.6.0 ./build.sh
 
 원본 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
 다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `RIDI_SHA256` 이나
-`NERD_PINNED_SHA256` 을 고치세요. `NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의
-`SHA-256.txt` 로 확인하고, 판을 바꾸면 베이스 글꼴도 새로 받아요. 예전 `build.sh` 로 받아 둔 `build/` 에서는
-처음 한 번 Nerd Font 를 다시 받아요.
+`NERD_PINNED_SHA256` 을 고치세요. `NERD_PINNED_SHA256` 을 고치면 풀어 둔 베이스 글꼴도 새 zip 에서 다시 풀어요.
+`NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의 `SHA-256.txt` 로 확인하고, 판을 바꾸면
+베이스 글꼴도 새로 받아요. 예전 `build.sh` 로 받아 둔 `build/` 에서는 처음 한 번 Nerd Font 를 다시 받거나 다시 풀어요.
 
 `VERSION` 은 글꼴 정보에 찍히는 버전이라 꼭 넘겨야 해요. 릴리스 태그(`v1.6.0`)와 같은 값을 쓰세요.
 빠졌거나 `X.Y.Z` 꼴이 아니면 원본을 내려받기 전에 멈춰요. 기본값에 기대어 이전 버전으로 빌드하는
