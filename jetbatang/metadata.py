@@ -61,7 +61,7 @@ def set_os2(base):
     os2.ulCodePageRange1 |= (1 << 19) | (1 << 21)   # 949 Wansung / 1361 Johab
 
 
-def set_names(base, donor, args):
+def set_names(base, donor, family, style, font_version):
     """이름 테이블과 판 번호를 새로 쓴다.
 
     원본의 이름·상표 기록은 통째로 버리고 새로 쓴다.
@@ -72,17 +72,17 @@ def set_names(base, donor, args):
         f"Hangul: {get_name(donor, 0)}",
         "Merged derivative, SIL Open Font License 1.1.",
     ]))
-    fam1, sub2 = legacy_names(args.family, args.style)
-    full = f"{args.family} {args.style}"
-    ps = (re.sub(r"[^A-Za-z0-9]", "", args.family) + "-"
-          + re.sub(r"[^A-Za-z0-9]", "", args.style))
+    fam1, sub2 = legacy_names(family, style)
+    full = f"{family} {style}"
+    ps = (re.sub(r"[^A-Za-z0-9]", "", family) + "-"
+          + re.sub(r"[^A-Za-z0-9]", "", style))
 
     drop = set(range(0, 15)) | {16, 17, 18, 20, 21, 22}
     base["name"].names = [n for n in base["name"].names if n.nameID not in drop]
     for nid, value in [(0, copyright_), (1, fam1), (2, sub2),
                        (3, f"{ps};merged-with-RIDIBatang"), (4, full),
-                       (5, f"Version {args.font_version}"), (6, ps),
-                       (13, OFL_DESC), (14, OFL_URL), (16, args.family), (17, args.style)]:
+                       (5, f"Version {font_version}"), (6, ps),
+                       (13, OFL_DESC), (14, OFL_URL), (16, family), (17, style)]:
         set_name(base, nid, value)
     # 비워 두면 base 의 2.304 가 남아 JetBrains Mono 와 같은 판으로 보인다.
-    base["head"].fontRevision = font_revision(args.font_version)
+    base["head"].fontRevision = font_revision(font_version)

@@ -244,10 +244,22 @@ def reweigh(glyph, gx, gy):
 
 
 class Weight:
-    """한글 굵기를 바꿀 양. ex·ey 는 가로·세로 증가량이고, 음수면 그만큼 깎는다."""
+    """한글 굵기를 바꿀 양. ex·ey 는 가로·세로 증가량이고, 음수면 그만큼 깎는다.
 
-    def __init__(self, ex, ey):
+    ey 를 주지 않으면 불릴 때 ex 의 0.4 배, 깎을 때 0.8 배다. 명조 Bold 는 세로획이 주로 굵어지지만
+    가로획을 그대로 두면 저해상도에서 얼룩져 보여서, 가로획이 겹겹이 쌓이는 글자(능·동·닙)의 속공간이
+    메워지지 않는 선에서 절반 조금 못 되게 준다. 깎을 때는 RIDIBatang 의 가로획 67 과 세로획 81 의
+    비율대로 깎는다. 0.4 배만 깎으면 Thin 에서 가로획이 세로획보다 굵어진다.
+    """
+
+    def __init__(self, ex, ey=None):
+        if ey is None:
+            ey = ex * (0.4 if ex > 0 else 0.8)
+        if not (math.isfinite(ex) and math.isfinite(ey)):
+            raise ValueError("굵기 증가량은 유한한 수여야 해요")
+        # 부호가 다르면 깎을지 불릴지 정할 수 없다.
+        if ex * ey < 0:
+            raise ValueError("--embolden 과 --embolden-y 는 부호가 같아야 해요")
         self.ex, self.ey = ex, ey
         self.thinner = ex < 0 or ey < 0
-        # 불릴 때 외곽선을 겹쳐 놓을 자리. 깎거나 그대로 둘 때는 비어 있다.
-        self.offsets = embolden_ring(ex, ey) if (ex > 0 or ey > 0) else []
+        self.emboldens = ex > 0 or ey > 0

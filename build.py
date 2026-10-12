@@ -7,8 +7,9 @@
 """
 import argparse
 
-from jetbatang.merge import build_font
+from jetbatang.merge import Options, build_font
 from jetbatang.metadata import font_revision
+from jetbatang.weight import Weight
 
 
 def parse_args():
@@ -46,13 +47,13 @@ def parse_args():
     args = ap.parse_args()
     try:
         font_revision(args.font_version)
+        weight = Weight(args.embolden, args.embolden_y)
     except ValueError as exc:
         ap.error(str(exc))
-    if args.embolden_y is None:
-        args.embolden_y = args.embolden * (0.4 if args.embolden > 0 else 0.8)
-    if args.embolden * args.embolden_y < 0:
-        ap.error("--embolden 과 --embolden-y 는 부호가 같아야 해요")
-    return args
+    return Options(base=args.base, donor=args.donor, out=args.out, font_version=args.font_version,
+                   family=args.family, style=args.style, scale=args.scale, yshift=args.yshift,
+                   shear_from_base=args.shear_from_base, shear_pivot=args.shear_pivot,
+                   weight=weight, max_err=args.max_err)
 
 
 def main():

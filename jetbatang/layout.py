@@ -60,19 +60,22 @@ def fit_cell(dglyphs, dcmap, bglyphs, bcmap, shear, ex):
 
 
 class Grid:
-    """base 의 칸, 그리고 donor 글자를 base 로 옮기는 배율과 기울기."""
+    """base 의 칸, 그리고 donor 글자를 base 로 옮기는 배율과 기울기.
 
-    def __init__(self, base, donor, args):
+    scale 은 donor upem 기준 한글 배율, yshift 는 한글 세로 이동(base 단위), shear_pivot 은 기울임
+    회전축 높이(em 비율)다. shear_from_base 면 base 의 italicAngle 만큼 기울인다.
+    """
+
+    def __init__(self, base, donor, scale, yshift, shear_from_base, shear_pivot):
         self.upem = base["head"].unitsPerEm
         self.cell = base["hmtx"]["A"][0]        # 라틴 1칸
         self.wide = self.cell * 2               # 한글 2칸
         self.donor_upem = donor["head"].unitsPerEm
-        self.scale = args.scale * self.upem / self.donor_upem
-        self.max_err = args.max_err * self.upem
-        self.pivot = args.shear_pivot * self.upem
-        self.yshift = args.yshift
+        self.scale = scale * self.upem / self.donor_upem
+        self.pivot = shear_pivot * self.upem
+        self.yshift = yshift
         self.shear = 0.0
-        if args.shear_from_base:
+        if shear_from_base:
             angle = base["post"].italicAngle          # 오른쪽으로 누우면 음수
             self.shear = math.tan(math.radians(-angle))
 

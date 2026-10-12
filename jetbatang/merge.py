@@ -1,6 +1,9 @@
-"""base 에 donor 글자를 더해 한 글꼴로 만드는 흐름. 각 단계는 영역별 모듈에 있다."""
+"""base 에 donor 글자를 더해 한 글꼴로 만드는 흐름. 글자 고르기·칸 배치·획 굵기·NFD·이름 같은 영역별
+계산은 각 모듈에 있고, 여기에는 그것을 이어 base 에 글리프를 넣는 단계와 그 순서가 있다."""
 import re
 import sys
+from dataclasses import dataclass
+from typing import NamedTuple
 
 from fontTools.misc.transform import Transform
 from fontTools.ttLib import TTFont
@@ -57,12 +60,35 @@ class Merge:
                     sub.cmap[cp] = gname
 
 
-def donor_sources(donor, base, grid, weight):
-    """donor 에서 가져올 글자를 고른다. (sources, grows, symbols, 건너뛴 글자 수) 를 준다.
+@dataclass(frozen=True)
+class Options:
+    """build_font 에 넘기는 값. build.py 가 명령줄 인자로 만든다."""
+    base: str
+    donor: str
+    out: str
+    font_version: str
+    family: str
+    style: str
+    scale: float            # 한글 배율(donor upem 기준)
+    yshift: float           # 한글 세로 이동(base 단위)
+    shear_from_base: bool   # base 의 italicAngle 만큼 한글도 기울인다
+    shear_pivot: float      # 기울임 회전축 높이(em 비율)
+    weight: Weight
+    max_err: float          # 곡선 변환 허용오차(em 비율)
 
-    sources 는 {cp: (그릴 거리, 변환, 폭, 이름)}, grows 는 기본과 다른 굵기 증가량을 쓰는 글자의
-    {cp: (gx, gy)}, symbols 는 1칸에 줄여 넣는 KS X 1001 기호다.
-    """
+
+class Source(NamedTuple):
+    """donor 에서 가져와 base 에 넣을 글자 하나."""
+    drawing: object         # draw(pen) 하는 donor 글리프, 또는 kana 가 만든 글자
+    transform: Transform    # base 칸으로 옮기는 변환
+    advance: int
+    name: str               # 새 글리프 이름의 바탕
+    grow: tuple = None      # 기본과 다른 (가로, 세로) 굵기 증가량. None 이면 Weight 를 따른다
+    one_cell: bool = False  # 1칸에 줄여 넣는 KS X 1001 기호
+
+
+def donor_sources(donor, base, grid, weight):
+    """donor 에서 가져올 글자를 고른다. ({cp: Source}, donor 에 폭이 없어 건너뛴 글자 수) 를 준다."""
     dcmap = donor.getBestCmap()
     dglyphs = donor.getGlyphSet()
     dhmtx = donor["hmtx"]
@@ -71,62 +97,66 @@ def donor_sources(donor, base, grid, weight):
     targets = {cp: dcmap[cp] for cp in dcmap if is_wide(cp)}
     targets.update({cp: dcmap[src] for cp, src in ALIASES.items() if src in dcmap})
 
-    sources = {cp: (dglyphs[name], grid.centered(dhmtx[name][0]), wide, name)
+    sources = {cp: Source(dglyphs[name], grid.centered(dhmtx[name][0]), wide, name)
                for cp, name in targets.items() if name in dhmtx.metrics}
     skipped = len(targets) - len(sources)
     combining = combining_kana(dglyphs, dcmap, dhmtx)
     made = voiced_kana(dglyphs, dcmap, dhmtx) | small_kana(dglyphs, dcmap, dhmtx) | spacing_marks(combining)
     for cp, (drawing, advance, name) in made.items():
         if cp not in dcmap:
-            sources[cp] = (drawing, grid.centered(advance), wide, name)
+            sources[cp] = Source(drawing, grid.centered(advance), wide, name)
     for cp, (drawing, advance, name) in combining.items():
         tf = grid.centered(advance)
         # 결합점의 advance 는 0. 현재 펜 위치에서 직전의 두 칸으로 돌아가 놓는다.
-        sources[cp] = (drawing, Transform(tf.xx, tf.xy, tf.yx, tf.yy, tf.dx - wide, tf.dy), 0, name)
+        sources[cp] = Source(drawing, Transform(tf.xx, tf.xy, tf.yx, tf.yy, tf.dx - wide, tf.dy), 0, name)
     bcmap = base.getBestCmap()
     bglyphs = base.getGlyphSet()
     one_cell = SymbolCell(donor, base, grid, ex)
 
-    # 기본(ex, ey)과 다른 굵기 증가량으로 불리는 글자. 줄여 넣는 글자는 줄인 비율만큼 덜 불린다.
-    # 원래 크기에서 굵게 한 다음 줄인 것과 같은 모양이라, 0.6 배로 좁아진 ⑧ ⓐ 의 속공간이 덜 막힌다.
-    grows = {}
-    symbols = set()
+    # 1칸에 줄여 넣는 글자는 줄인 비율만큼 덜 불린다. 원래 크기에서 굵게 한 다음 줄인 것과 같은
+    # 모양이라, 0.6 배로 좁아진 ⑧ ⓐ 의 속공간이 덜 막힌다.
     for cp in ksx1001_symbols(bcmap):
         if cp in dcmap:
             tf, k = one_cell.place(dcmap[cp])
-            sources[cp] = (dglyphs[dcmap[cp]], tf, cell, dcmap[cp])
-            grows[cp] = (ex * k, ey * k)
-            symbols.add(cp)
+            sources[cp] = Source(dglyphs[dcmap[cp]], tf, cell, dcmap[cp], (ex * k, ey * k), True)
     for cp, (tf, grow) in fit_cell(dglyphs, dcmap, bglyphs, bcmap, grid.shear, ex).items():
-        sources[cp] = (dglyphs[dcmap[cp]], tf, cell, dcmap[cp])
-        grows[cp] = (grow, ey)
-    return sources, grows, symbols, skipped
+        sources[cp] = Source(dglyphs[dcmap[cp]], tf, cell, dcmap[cp], (grow, ey))
+    return sources, skipped
 
 
-def add_donor_glyphs(merge, weight, sources, grows, symbols, max_err, skipped):
-    """sources 를 TrueType 글리프로 옮기고 굵기를 바꿔 base 에 넣는다."""
-    reshaped, partly, kept = 0, [], []
+class DonorGlyphs(NamedTuple):
+    """add_donor_glyphs 가 한 일."""
+    skipped: int            # TrueType 외곽선으로 옮기지 못한 글자 수
+    reshaped: int           # 모양을 지키며 굵기를 바꾼 글자 수
+    partly: list            # 덜 바꾼 글자
+    kept: list              # 모양이 바뀌어 그대로 둔 글자
+    layered: dict           # 외곽선을 겹쳐 부르는 composite 로 둔 글자 {cp: 글리프 이름}
+
+
+def add_donor_glyphs(merge, weight, sources, max_err):
+    """sources 를 TrueType 글리프로 옮기고 굵기를 바꿔 base 에 넣는다. max_err 는 base 단위다."""
+    skipped, reshaped, partly, kept, layered = 0, 0, [], [], {}
     for cp in sorted(sources):
-        drawing, tf, advance, dname = sources[cp]
+        source = sources[cp]
 
         try:
-            glyph = outline(drawing, tf, max_err)
+            glyph = outline(source.drawing, source.transform, max_err)
         except Exception as exc:
-            print(f"  skip U+{cp:04X} {dname}: {exc}", file=sys.stderr)
+            print(f"  skip U+{cp:04X} {source.name}: {exc}", file=sys.stderr)
             skipped += 1
             continue
 
-        gname = merge.unique_name(dname)
-        gx, gy = grows.get(cp, (weight.ex, weight.ey))
+        gname = merge.unique_name(source.name)
+        gx, gy = source.grow or (weight.ex, weight.ey)
 
         # 깎을 때는 한글·가나 등, 불릴 때는 1칸 기호만 모양을 지키며 굵기를 바꾼다. 한글은 불리면
         # ㅃ ㄳ 처럼 가까운 획이 붙는 게 자연스럽지만, 줄여 넣은 ⑫ 의 숫자가 원에 붙으면 읽을 수 없다.
         # 1칸 기호는 0.6 배로 줄여 넣어 획이 이미 Light 라틴보다 가늘다(① 의 원 33). 한글만큼
         # 깎으면 Thin 에서 원이 7 로 거의 사라져서 깎지 않는다.
         if weight.thinner:
-            reshape = cp not in symbols
+            reshape = not source.one_cell
         else:
-            reshape = bool(weight.offsets) and cp in symbols
+            reshape = weight.emboldens and source.one_cell
         if glyph.numberOfContours and reshape:
             changed, step = reweigh(glyph, gx, gy)
             if changed is None:
@@ -136,26 +166,21 @@ def add_donor_glyphs(merge, weight, sources, grows, symbols, max_err, skipped):
                 reshaped += 1
                 if step < 1:
                     partly.append(chr(cp))
-        elif weight.offsets and glyph.numberOfContours:
+        elif weight.emboldens and glyph.numberOfContours:
             # 원본 외곽선은 cmap 에 걸지 않는 글리프로 두고, 그것을 여러 번 겹쳐
             # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
             src = gname + ".src"
             merge.taken.add(src)
-            merge.put(src, glyph, advance)
+            merge.put(src, glyph, source.advance)
             glyph = make_composite(src, embolden_ring(gx, gy))
-        merge.put(gname, glyph, advance)
+            layered[cp] = gname
+        merge.put(gname, glyph, source.advance)
         merge.added[cp] = gname
-
-    print(f"  한글 등 {len(merge.added)}자 추가, {skipped}자 건너뜀")
-    if weight.thinner or weight.offsets:
-        verb = "깎음" if weight.thinner else "불림(1칸 기호)"
-        print(f"  모양을 지키며 {verb}: {reshaped}자"
-              + (f", 덜 바꿈: {''.join(partly)}" if partly else "")
-              + (f", 그대로 둠: {''.join(kept)}" if kept else ""))
+    return DonorGlyphs(skipped, reshaped, partly, kept, layered)
 
 
-def merge_overlaps(merge, weight, grows):
-    """불린 글자의 겹친 composite 를 외곽선 하나로 합친다.
+def merge_overlaps(merge, layered):
+    """add_donor_glyphs 가 겹쳐 부르는 composite 로 둔 글자({cp: 글리프 이름})를 외곽선 하나로 합친다.
 
     겹쳐 놓은 composite 를 그대로 두면 macOS CoreText 가 겹친 가장자리마다
     안티앨리어싱을 따로 해서 획이 번져 보인다(FreeType 은 멀쩡하다).
@@ -163,11 +188,11 @@ def merge_overlaps(merge, weight, grows):
     """
     glyf, hmtx = merge.glyf, merge.hmtx
     merged, failed = 0, []
-    for cp, name in merge.added.items():
-        if not glyf[name].isComposite():
-            continue
+    for cp, name in layered.items():
         src = name + ".src"
-        one = merge_copies(glyf[src], embolden_ring(*grows.get(cp, (weight.ex, weight.ey))))
+        # composite 가 실제로 겹쳐 그리는 자리 그대로 합친다.
+        offsets = [(c.x, c.y) for c in glyf[name].components]
+        one = merge_copies(glyf[src], offsets)
         if one is None:
             failed.append(chr(cp))
             continue
@@ -177,9 +202,9 @@ def merge_overlaps(merge, weight, grows):
         merged += 1
     used = {c.glyphName for n in merge.added.values()
             if glyf[n].isComposite() for c in glyf[n].components}
-    for name in merge.added.values():
+    for name in layered.values():
         src = name + ".src"
-        if src in glyf.glyphs and src not in used:
+        if src not in used:
             del glyf.glyphs[src]
             del hmtx.metrics[src]
             merge.order.remove(src)
@@ -207,29 +232,36 @@ def add_base_aliases(merge):
             merge.added[cp] = bcmap[src]
 
 
-def build_font(args):
-    """build.py 의 명령줄 인자대로 base 와 donor 를 합쳐 args.out 에 저장한다."""
-    base = TTFont(args.base)
-    donor = TTFont(args.donor)
-    grid = Grid(base, donor, args)
-    weight = Weight(args.embolden, args.embolden_y)
+def build_font(options):
+    """options 대로 base 와 donor 를 합쳐 options.out 에 저장한다."""
+    base = TTFont(options.base)
+    donor = TTFont(options.donor)
+    grid = Grid(base, donor, options.scale, options.yshift, options.shear_from_base, options.shear_pivot)
+    weight = options.weight
     print(f"base upem={grid.upem} cell={grid.cell} wide={grid.wide} | donor upem={grid.donor_upem} "
           f"| scale={grid.scale:.4f} shear={grid.shear:.4f} embolden={weight.ex:g}/{weight.ey:g}")
 
     merge = Merge(base)
-    sources, grows, symbols, skipped = donor_sources(donor, base, grid, weight)
-    add_donor_glyphs(merge, weight, sources, grows, symbols, grid.max_err, skipped)
-    if weight.offsets:
-        merge_overlaps(merge, weight, grows)
+    sources, unusable = donor_sources(donor, base, grid, weight)
+    done = add_donor_glyphs(merge, weight, sources, options.max_err * grid.upem)
+    print(f"  한글 등 {len(merge.added)}자 추가, {unusable + done.skipped}자 건너뜀")
+    if weight.thinner or weight.emboldens:
+        verb = "깎음" if weight.thinner else "불림(1칸 기호)"
+        print(f"  모양을 지키며 {verb}: {done.reshaped}자"
+              + (f", 덜 바꿈: {''.join(done.partly)}" if done.partly else "")
+              + (f", 그대로 둠: {''.join(done.kept)}" if done.kept else ""))
+    if weight.emboldens:
+        merge_overlaps(merge, done.layered)
     add_widened(merge, grid.wide)
     add_base_aliases(merge)
     add_nfd_jamo(merge, grid.wide)
+    # 글리프를 다 넣은 뒤에 cmap 을 건다. 아래 GSUB·GDEF·OS/2 단계는 그 cmap 을 읽는다.
     merge.finish()
 
     add_nfd_substitutions(base)
     mark_combining(base, merge.added)
     set_os2(base)
-    set_names(base, donor, args)
+    set_names(base, donor, options.family, options.style, options.font_version)
 
-    base.save(args.out)
-    print(f"  저장: {args.out}")
+    base.save(options.out)
+    print(f"  저장: {options.out}")
