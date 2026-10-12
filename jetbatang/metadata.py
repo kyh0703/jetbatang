@@ -53,12 +53,10 @@ def set_name(font, nid, value):
 
 
 def set_os2(base):
-    """한글을 쓸 수 있는 폰트라고 Windows 에 알린다."""
+    """한글을 쓸 수 있는 폰트라고 Windows 에 알린다. 유니코드 범위를 다시 세지 못하면 한글 범위 없이
+    나가므로 멈춘다."""
     os2 = base["OS/2"]
-    try:
-        os2.recalcUnicodeRanges(base)
-    except Exception as exc:
-        print(f"  (unicode range 재계산 생략: {exc})")
+    os2.recalcUnicodeRanges(base)
     os2.ulCodePageRange1 |= (1 << 19) | (1 << 21)   # 949 Wansung / 1361 Johab
 
 
