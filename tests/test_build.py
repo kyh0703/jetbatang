@@ -19,7 +19,7 @@ from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 
-from jetbatang import charset, kana, metadata, outlines, release, scanline, weight
+from jetbatang import charset, kana, layout, merge, metadata, outlines, release, scanline, weight
 
 ROOT = Path(__file__).resolve().parent.parent
 DONOR = ROOT / "build" / "RIDIBatang.otf"
@@ -70,13 +70,11 @@ def section(glyphs, name, y, swap=False):
     return spans
 
 
-def topology(glyphs, name):
-    """(바깥 외곽선 수, 속공간 수). 획이 서로 붙거나 속공간이 막히면 달라진다."""
+def shape(glyphs, name):
+    """글자의 덩어리와 속공간. 빌드가 굵기를 바꾼 뒤 모양을 견주는 것과 같은 격자로 잰다."""
     path = pathops.Path()
     glyphs[name].draw(path.getPen(glyphSet=glyphs))
-    contours = list(pathops.simplify(path, clockwise=True).contours)
-    outer = sum(c.clockwise for c in contours)
-    return outer, len(contours) - outer
+    return scanline.structure(scanline.coverage(path, weight.STRUCTURE_STEPS))
 
 
 def one_cell_symbols(font, base):
@@ -548,24 +546,28 @@ class KoreanSymbolTest(unittest.TestCase):
                     self.assertLessEqual(x1 - x0, r1 - r0 + 2)
                     self.assertAlmostEqual((x0 + x1) / 2, 300, delta=2)
 
-    @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
+    @unittest.skipUnless(DONOR.exists(), "build/RIDIBatang.otf 가 없어요. ./build.sh 를 먼저 돌리세요")
     def test_one_cell_symbols_keep_their_counters_in_every_weight(self):
         # 1칸 기호는 base ○ 크기로 0.6 배쯤 줄여 넣는다. 줄인 뒤에 한글과 같은 만큼 굵기를 불리면
-        # ExtraBold 에서 ⑧ ⓐ 의 속공간이 막히고 ⑫ 의 숫자가 원에 붙는다. 굵기마다 바깥 외곽선과
-        # 속공간 수가 같은 기울기의 Regular 와 같아야 한다.
-        plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)}
-        for path in BUILT:
-            base_path = ROOT / "build" / path.name.replace("JetBatangNF", "JetBrainsMonoNerdFontMono")
-            if not base_path.exists():
-                self.skipTest(f"{base_path.name} 가 없어요. ./build.sh 를 먼저 돌리세요")
-            font = TTFont(path)
-            reference = plain[path.stem.endswith("Italic")]
+        # ExtraBold 에서 ⑧ ⓐ 의 속공간이 막히고 ⓟ ⑫ 의 글자가 원에 붙는다. 굵기를 바꾸기 전 글자와 덩어리·
+        # 속공간이 하나씩 짝지어져야 한다. 개수만 세면 속공간 하나가 막히고 다른 곳이 닫힐 때를 놓친다.
+        # 빌드 값은 build.py 기본값이다.
+        donor = TTFont(DONOR)
+        for suffix, _, embolden in release.VARIANTS:
+            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            base_path = ROOT / "build" / f"JetBrainsMonoNerdFontMono-{suffix}.ttf"
+            if not path.exists() or not base_path.exists():
+                continue
+            base, font = TTFont(base_path), TTFont(path)
+            grid = layout.Grid(base, donor, 1.0, 60.0, suffix.endswith("Italic"), 0.325)
+            sources = merge.donor_sources(donor, base, grid, weight.Weight(embolden))
             cmap, glyphs = font.getBestCmap(), font.getGlyphSet()
-            r_cmap, r_glyphs = reference.getBestCmap(), reference.getGlyphSet()
-            for ch in one_cell_symbols(font, TTFont(base_path)):
-                with self.subTest(font=path.stem, ch=ch):
-                    self.assertEqual(topology(glyphs, cmap[ord(ch)]),
-                                     topology(r_glyphs, r_cmap[ord(ch)]))
+            for cp, source in sources.items():
+                if not source.one_cell:
+                    continue
+                before = outlines.outline(source.drawing, source.transform, 0.001 * grid.upem)
+                with self.subTest(font=suffix, ch=chr(cp)):
+                    self.assertTrue(scanline.same_structure(weight.structure_of(before), shape(glyphs, cmap[cp])))
 
     @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
     def test_italic_leans_letters_but_keeps_symbols_upright(self):
