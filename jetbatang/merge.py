@@ -42,10 +42,27 @@ class Merge:
         return gname
 
     def put(self, name, glyph, advance):
+        """새 글리프를 넣는다. 같은 이름이 이미 있으면 덮어쓰지 않고 멈춘다."""
+        if name in self.glyf.glyphs:
+            raise ValueError(f"글리프 이름 {name} 이 이미 있어요")
+        self.taken.add(name)
         self.glyf.glyphs[name] = glyph
         glyph.recalcBounds(self.glyf)
         self.hmtx.metrics[name] = (advance, glyph.xMin if glyph.numberOfContours else 0)
         self.order.append(name)
+
+    def replace(self, name, glyph):
+        """넣어 둔 글리프의 외곽선만 바꾼다. 폭은 그대로 둔다."""
+        advance = self.hmtx[name][0]
+        self.glyf.glyphs[name] = glyph
+        glyph.recalcBounds(self.glyf)
+        self.hmtx.metrics[name] = (advance, glyph.xMin if glyph.numberOfContours else 0)
+
+    def remove(self, name):
+        """넣어 둔 글리프를 뺀다."""
+        del self.glyf.glyphs[name]
+        del self.hmtx.metrics[name]
+        self.order.remove(name)
 
     def finish(self):
         """글리프 순서와 개수를 맞추고, 모은 글자를 유니코드 cmap 에 건다."""
@@ -169,7 +186,6 @@ def add_donor_glyphs(merge, weight, sources, max_err):
             # 원본 외곽선은 cmap 에 걸지 않는 글리프로 두고, 그것을 여러 번 겹쳐
             # 부르는 composite 를 실제 글자로 쓴다. 점을 복사하지 않아 용량이 거의 안 는다.
             src = gname + ".src"
-            merge.taken.add(src)
             merge.put(src, glyph, source.advance)
             glyph = make_composite(src, embolden_ring(gx, gy))
             layered[cp] = gname
@@ -185,7 +201,7 @@ def merge_overlaps(merge, layered):
     안티앨리어싱을 따로 해서 획이 번져 보인다(FreeType 은 멀쩡하다).
     그래서 합집합을 구해 외곽선 하나로 만든다. 믿을 수 없는 글자만 겹친 채 둔다.
     """
-    glyf, hmtx = merge.glyf, merge.hmtx
+    glyf = merge.glyf
     merged, failed = 0, []
     for cp, name in layered.items():
         src = name + ".src"
@@ -195,18 +211,14 @@ def merge_overlaps(merge, layered):
         if one is None:
             failed.append(chr(cp))
             continue
-        glyf.glyphs[name] = one
-        one.recalcBounds(glyf)
-        hmtx.metrics[name] = (hmtx[name][0], one.xMin)
+        merge.replace(name, one)
         merged += 1
     used = {c.glyphName for n in merge.added.values()
             if glyf[n].isComposite() for c in glyf[n].components}
     for name in layered.values():
         src = name + ".src"
         if src not in used:
-            del glyf.glyphs[src]
-            del hmtx.metrics[src]
-            merge.order.remove(src)
+            merge.remove(src)
     print(f"  외곽선 합침: {merged}자" + (f", 겹친 채 둠: {' '.join(failed)}" if failed else ""))
 
 
@@ -218,7 +230,6 @@ def add_widened(merge, wide):
             continue
         src = bcmap[cp]
         gname = src + ".wide"
-        merge.taken.add(gname)
         merge.put(gname, make_composite(src, [((wide - merge.hmtx[src][0]) // 2, 0)]), wide)
         merge.added[cp] = gname
 
