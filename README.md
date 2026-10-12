@@ -36,8 +36,16 @@ if (상태 === "완료") return "성공";
 [Releases](../../releases) 에서 원하는 굵기의 `ttf` 나 `JetBatangNF-all.zip` 을 받으세요.
 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 글꼴 파일이 없어요.
 설치한 판은 글꼴 정보의 버전(`Version 1.6.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
-릴리스에 `SHA256SUMS` 가 있으면 받은 파일이 있는 폴더에서 `sha256sum -c SHA256SUMS --ignore-missing` 으로
-파일이 온전한지 확인할 수 있어요.
+릴리스에 `SHA256SUMS` 가 있으면 받은 파일이 있는 폴더에서 파일이 온전한지 확인할 수 있어요. 파일마다 `OK` 가
+나오면 돼요.
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+```powershell
+Get-Content SHA256SUMS | ForEach-Object { $hash, $name = $_ -split '  ', 2; if (Test-Path $name) { "${name}: $(if ((Get-FileHash $name).Hash -eq $hash) { 'OK' } else { 'FAILED' })" } }
+```
 
 **Windows**
 
@@ -203,7 +211,8 @@ VERSION=1.6.0 ./build.sh
 ```
 
 `uv` 가 있으면 가상환경을 만들지 않고 `VERSION=1.6.0 uv run --no-project --with-requirements requirements.txt ./build.sh`
-로 돌려도 돼요.
+로 돌려도 돼요. 이때는 회귀 검사도 `uv run --no-project --with-requirements requirements.txt python3 -m unittest discover tests`
+로 돌려요.
 
 `requirements.txt` 의 `uharfbuzz` 는 회귀 검사에서 NFD 문자열을 실제로 조합할 때 써요. 빌드할 때도 설치돼
 있으면 fontTools 가 GSUB 를 harfbuzz 로 배치해서, 없을 때와 동작은 같지만 파일 바이트가 달라져요. 릴리스는
