@@ -214,7 +214,8 @@ fontTools 가 GSUB 를 harfbuzz 로 배치해서, 없을 때와 동작은 같지
 python3 -m unittest discover tests
 ```
 
-빌드 값을 바꿀 때도 `VERSION` 은 같이 넘겨요.
+빌드 값을 바꿀 때도 `VERSION` 은 같이 넘겨요. `SCALE`·`YSHIFT`·`EMBOLDEN_SCALE` 이 숫자가 아니거나 `JOBS` 가
+0 이상의 정수가 아니면 원본을 내려받기 전에 멈춰요.
 
 ```sh
 VERSION=1.6.0 SCALE=1.05 YSHIFT=0 ./build.sh     # 한글을 5% 키우고 원래 높이로

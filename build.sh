@@ -59,6 +59,19 @@ try:
     build.font_revision(sys.argv[1])
 except ValueError as exc:
     sys.exit(str(exc))' "$VERSION"
+# 빌드 값도 원본을 내려받기 전에 본다. 틀린 값이면 열여섯 종이 모두 같은 오류로 실패한다.
+python3 -c 'import math, sys
+for name, value in zip(sys.argv[1::2], sys.argv[2::2]):
+    try:
+        ok = math.isfinite(float(value))
+    except ValueError:
+        ok = False
+    if not ok:
+        sys.exit(f"{name} 는 숫자여야 해요: {value!r}")' \
+  SCALE "$SCALE" YSHIFT "$YSHIFT" EMBOLDEN_SCALE "$EMBOLDEN_SCALE"
+case "$JOBS" in
+  ''|*[!0-9]*) echo "JOBS 는 0 이상의 정수여야 해요: '$JOBS'"; exit 1;;
+esac
 
 mkdir -p build fonts
 
@@ -141,7 +154,8 @@ fi
 build_one() {
   local suffix="${1%%:*}" rest="${1#*:}"
   local style="${rest%%:*}" embolden="${rest##*:}"
-  embolden=$(python3 -c "print(round($embolden * $EMBOLDEN_SCALE, 2))")
+  embolden=$(python3 -c 'import sys; print(round(float(sys.argv[1]) * float(sys.argv[2]), 2))' \
+    "$embolden" "$EMBOLDEN_SCALE")
 
   local args=(--embolden "$embolden")
   case "$suffix" in *Italic) args+=(--shear-from-base);; esac
