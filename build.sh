@@ -146,16 +146,17 @@ build_one() {
   embolden=$(python3 -c 'import sys; print(round(float(sys.argv[1]) * float(sys.argv[2]), 2))' \
     "$embolden" "$EMBOLDEN_SCALE")
 
-  local args=(--embolden "$embolden")
+  local args=(--embolden="$embolden")
   case "$suffix" in *Italic) args+=(--shear-from-base);; esac
 
   local log
+  # 값은 --옵션=값 꼴로 넘긴다. 띄어 넘기면 argparse 가 -1e1 같은 음수를 옵션으로 읽는다.
   if log=$(python3 build.py \
-      --base "build/$BASE_PREFIX-$suffix.ttf" \
-      --donor build/RIDIBatang.otf \
-      --out "fonts/JetBatangNF-$suffix.ttf" \
-      --family "$FAMILY" --style "$style" --font-version "$VERSION" \
-      --scale "$SCALE" --yshift "$YSHIFT" "${args[@]}" 2>&1); then
+      --base="build/$BASE_PREFIX-$suffix.ttf" \
+      --donor=build/RIDIBatang.otf \
+      --out="fonts/JetBatangNF-$suffix.ttf" \
+      --family="$FAMILY" --style="$style" --font-version="$VERSION" \
+      --scale="$SCALE" --yshift="$YSHIFT" "${args[@]}" 2>&1); then
     printf '==> %s\n%s\n' "$suffix" "$log"
   else
     printf '==> %s 실패\n%s\n' "$suffix" "$log" >&2
