@@ -269,6 +269,20 @@ Releases 에 올릴 파일은 `./package.sh` 로 `dist/` 에 만들고, `dist/` 
 않았거나, 빌드가 중간에 실패했거나, 빌드한 뒤 글꼴이 바뀐 경우예요. 그때는 `./build.sh` 를 다시 돌리세요.
 RIDIBatang 글자를 하나라도 TrueType 외곽선으로 옮기지 못하면 그 굵기의 빌드가 실패해서 기록이 남지 않아요.
 
+이 과정은 `release.sh` 가 한 번에 해요. `README.md` 와 `build.sh` 의 예시 버전을 올려 커밋하고 `main` 에 올린 뒤
+돌리면, 열여섯 종을 빌드해 회귀 검사와 `package.sh` 를 거친 다음 `vX.Y.Z` 태그를 올리고 `dist/` 의 파일을 붙인 초안
+릴리스를 만들어요. 릴리스 노트를 쓰고 공개하면 끝이에요. 8코어 16스레드에서 12분쯤 걸려요.
+
+```sh
+VERSION=X.Y.Z ./release.sh
+VERSION=X.Y.Z uv run --no-project --with-requirements requirements.txt ./release.sh   # uv 로 돌릴 때
+```
+
+`build.sh`·`package.sh` 가 경고만 하는 것도 `release.sh` 는 막아요. 깔린 라이브러리 판이 `requirements.txt` 와
+다르거나, 커밋하지 않은 고침이나 새 파일이 있거나, 릴리스할 커밋이 `origin/main` 에 없거나, 같은 태그가 다른 커밋에
+있거나, 같은 판의 릴리스가 초안까지 포함해 이미 있으면 빌드하기 전에 멈춰요. 기본값과 다른 빌드 값으로 만들었으면
+검사하기 전에 멈춰요. 태그는 검사를 다 통과한 뒤에만 올리니, 중간에 실패하면 고친 커밋으로 다시 돌리면 돼요.
+
 ## LICENSE
 
 [SIL Open Font License 1.1](LICENSE). 원본 글꼴 두 개 모두 같은 라이선스예요.
