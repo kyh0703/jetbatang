@@ -3,9 +3,11 @@
 import re
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import NamedTuple
 
 from fontTools.misc.transform import Transform
+from fontTools.misc.timeTools import timestampSinceEpoch
 from fontTools.ttLib import TTFont
 
 from .charset import ALIASES, BASE_ALIASES, WIDEN, is_wide, ksx1001_symbols
@@ -14,6 +16,7 @@ from .layout import Grid, SymbolCell, fit_cell
 from .metadata import set_names, set_os2
 from .nfd import add_nfd_jamo, add_nfd_substitutions, mark_combining
 from .outlines import make_composite, outline
+from .release import source_date_epoch
 from .weight import Weight, embolden_ring, merge_copies, reweigh
 
 
@@ -174,7 +177,7 @@ def add_donor_glyphs(merge, weight, sources, max_err):
         else:
             reshape = weight.emboldens and source.one_cell
         if glyph.numberOfContours and reshape:
-            changed, step = reweigh(glyph, gx, gy)
+            changed, step = reweigh(glyph, gx, gy, weight.min_ink)
             if changed is None:
                 kept.append(chr(cp))
             else:
@@ -244,7 +247,8 @@ def add_base_aliases(merge):
 
 def build_font(options):
     """options 대로 base 와 donor 를 합쳐 options.out 에 저장한다."""
-    base = TTFont(options.base)
+    base = TTFont(options.base, recalcTimestamp=False)
+    base["head"].modified = timestampSinceEpoch(source_date_epoch(Path(__file__).resolve().parent.parent))
     donor = TTFont(options.donor)
     grid = Grid(base, donor, options.scale, options.yshift, options.shear_from_base, options.shear_pivot)
     weight = options.weight

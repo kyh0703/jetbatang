@@ -33,7 +33,8 @@ if (상태 === "완료") return "성공";
 
 ## INSTALL
 
-[Releases](../../releases) 에서 원하는 굵기의 `ttf` 나 `JetBatangNF-all.zip` 을 받으세요.
+[Releases](../../releases) 에서 기본 네 스타일(Regular·Bold·Italic·BoldItalic)은 `JetBatangNF-basic.zip` 으로 받으세요.
+다른 굵기도 쓰려면 열여섯 종을 담은 `JetBatangNF-all.zip` 이나 원하는 낱개 `ttf` 를 받으면 돼요.
 설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 글꼴 파일이 없어요.
 설치한 판은 글꼴 정보의 버전(`Version 1.7.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
 릴리스에 `SHA256SUMS` 가 있으면 받은 파일이 있는 폴더에서 파일이 온전한지 확인할 수 있어요. 파일마다 `OK` 가
@@ -55,19 +56,38 @@ Windows Terminal 에서는 받은 `ttf` 를 선택해 우클릭 → **모든 사
 글꼴 파일을 읽지 못하거나 Terminal 이 종료될 수 있어요. 이미 현재 사용자용으로 설치했다면 기존
 JetBatang NF 를 먼저 제거해 같은 글꼴이 두 위치에 중복 등록되지 않게 하세요.
 
-아래 스크립트는 **현재 사용자 계정용** 설치·제거에만 써요. 모든 사용자용으로 설치한 글꼴은
-Windows 글꼴 설정에서 관리하세요.
+스크립트도 **모든 사용자용 설치와 기존 설치 업데이트**를 지원해요. 기존 등록이 있으면 그 범위를 그대로 유지하고,
+모든 사용자용이면 관리자 PowerShell 이 필요해요. 권한이 없다고 사용자 전용으로 대신 설치하지 않아요.
+처음 설치할 때 인자가 없으면 현재 사용자용이며, Windows Terminal 에서는 관리자 PowerShell 의 `-AllUsers` 를 권해요.
+두 범위에 중복 등록돼 있거나 같은 스타일이 서로 다른 파일을 가리키면 변경하지 않고 먼저 정리하라고 알려줘요.
 
-`JetBatangNF-all.zip` 을 풀고, 푼 폴더에서 실행하세요. 같은 폴더에 있는 `JetBatangNF-*.ttf` 를 모두
-설치해요. 몇 종만 받았다면 Releases 의 `install-windows.ps1` 도 받아 `ttf` 와 같은 폴더에 두세요.
-저장소에서 직접 빌드했다면 루트에서 실행하세요. 각 파일은 스크립트 옆을 먼저 보고, 없으면 `fonts/` 에서 찾아요.
-루트에 같은 이름의 예전 `ttf` 가 있으면 그 파일을 우선 설치하니, 새 빌드를 설치할 때는 예전 파일을
-다른 폴더로 옮긴 뒤 실행하세요.
+`JetBatangNF-basic.zip` 이나 `JetBatangNF-all.zip` 을 풀고 실행하세요. 한두 종만 받았다면 `install-windows.ps1` 도
+같은 폴더에 두세요. 스크립트 옆의 `JetBatangNF-*.ttf` 를 먼저 보고 없으면 `fonts/` 에서 찾아요. 저장소에서 새 빌드를
+설치할 때 루트에 같은 이름의 예전 TTF 가 있으면 다른 폴더로 옮겨 주세요.
 
 ```powershell
+# Windows Terminal 권장: 관리자 PowerShell 에서 처음 설치
+powershell -ExecutionPolicy Bypass -File install-windows.ps1 -AllUsers
+# 기존 설치 업데이트: 원래 범위를 자동으로 유지 (전체 사용자용은 관리자 권한 필요)
 powershell -ExecutionPolicy Bypass -File install-windows.ps1
-powershell -ExecutionPolicy Bypass -File install-windows.ps1 -Uninstall
+# 파일·등록을 바꾸지 않고 변경 예정 사항만 확인
+powershell -ExecutionPolicy Bypass -File install-windows.ps1 -WhatIf
 ```
+
+사용 중인 파일을 억지로 덮어쓰지 않고, 내용 해시를 붙인 새 파일명으로 기존 등록의 경로를 바꿔요. 이전 파일과
+백업은 복원과 실행 중인 앱을 위해 남기므로 업데이트할수록 디스크 사용량이 늘 수 있어요. 사용자용 백업은
+`%LOCALAPPDATA%\JetBatangNF\Backups`, 모든 사용자용은 `%ProgramData%\JetBatangNF\Backups` 에 남고 경로를 출력해요.
+변경 중 실패하면 이전 상태로 자동 복구하고, `-Rollback` 으로 특정 백업 상태를 직접 복원할 수도 있어요.
+
+```powershell
+# 제거도 실제 등록된 파일 경로와 설치 범위를 사용
+powershell -ExecutionPolicy Bypass -File install-windows.ps1 -Uninstall
+# 앞서 출력된 백업 폴더를 지정해 복원 (모든 사용자용은 관리자 권한 필요)
+powershell -ExecutionPolicy Bypass -File install-windows.ps1 -Rollback "C:\ProgramData\JetBatangNF\Backups\백업폴더"
+```
+
+제거할 파일이 사용 중이면 등록을 먼저 제거하고 남은 경로를 알려줘요. 앱을 닫은 뒤 그 파일만 지우면 돼요.
+스크립트는 프로그램을 강제로 종료하거나 재부팅을 예약하지 않아요.
 
 설치가 끝나면 터미널을 완전히 종료한 뒤 다시 열어 주세요. WPF 앱에서 글꼴 가족 목록을 읽을 때
 `FileNotFoundException` 이 나면 조회 중 파일을 찾지 못한 것이지, 글꼴 파일이 불량이라는 뜻은
@@ -124,7 +144,8 @@ RIDIBatang 은 세로획 81 짜리 한 굵기밖에 없어요. 그래서 한글 
 자리와 여덟 방향으로 옮긴 외곽선이 모두 겹치는 곳만 남겨 획을 깎아요. 양은 가로 방향을 기준으로 잡고,
 세로 방향은 불릴 때 0.4 배, 깎을 때 0.8 배를 줘요. RIDIBatang 은 가로획(67)과 세로획(81)의 차이가
 작아서, 가로획을 덜 깎으면 Thin 에서 가로획이 세로획보다 굵어져요. 깎다가 가는 획이 끊기거나 사라지는
-`㎡ 『 ぁ` 같은 글자는 덜 깎아요.
+`㎡ 『 ぁ` 같은 글자는 끊기지 않는 데까지 1/16 씩 덜 깎아요. 다만 `『` 처럼 원래 획이 가는 글자는 획이 실처럼
+남지 않게, 세로획을 다 깎았을 때보다 눈에 띄게 옅어지기 전에 멈춰요.
 
 ## COVERAGE
 
@@ -187,8 +208,8 @@ NFD 를 지원하고, 호환 자모 `ㄱㅏ` 는 조합하지 않아요. 원본�
 ## LIMITATIONS
 
 - 13px 아래에서는 굵은 쪽 한글의 속공간이 메워져요. `뷁` 같은 글자부터 뭉개지기 시작해요.
-- 가는 판에서 `퐪` `뛌` `챟` `㎯` 처럼 획이 아주 가늘게 이어진 글자 열세~열여덟 자는 조금만 깎아도
-  획이 끊기거나 속공간이 터져서 Regular 굵기 그대로예요.
+- Thin·ThinItalic·ExtraLight 에서 `퐪` `퐬` `㎯` 처럼 획이 아주 가늘게 이어진 글자 열세 자는 조금만 깎아도
+  획이 끊기거나 속공간이 터져서 Regular 굵기 그대로예요. ExtraLightItalic 은 `㎯` 한 자이고, Light·LightItalic 은 없어요.
 - 한자가 없어요. 원본인 RIDIBatang 에 한자 글리프가 없어서예요.
 - 가나 중 `ゝ ゞ ヽ ヾ ゟ ゠ ヿ` 일곱 자가 빠져 있어요. RIDIBatang 에 만들 재료가 되는 글자가 없어요.
 - 옛한글 자모는 지원하지 않아요. NFD 조합에는 OpenType 조합을 처리하는 렌더러가 필요해요.
@@ -220,6 +241,12 @@ VERSION=1.7.0 ./build.sh
 있으면 fontTools 가 GSUB 를 harfbuzz 로 배치해서, 없을 때와 동작은 같지만 파일 바이트가 달라져요. 릴리스는
 `requirements.txt` 를 모두 설치한 환경에서 빌드하세요.
 
+같은 코드·원본·빌드값·기준 시각과 같은 라이브러리·Python·zlib 환경이면 TTF 와 ZIP 도 같은 바이트로 나와요.
+빌드 시각은 현재 시각이 아니라 Git 커밋 시각으로 고정해요. `SOURCE_DATE_EPOCH` 에 유닉스 시각(0 이상의 정수)을 직접 지정할 수도 있어요.
+`.git` 이 없는 소스 묶음은 기본값으로 UTC 1980-01-01 을 써요. 이 값은 글자 모양이나 버전 번호를 바꾸지 않아요.
+ZIP 은 빌드 기록에 남긴 시각을 쓰고, 파일의 수정 시각·권한·나열 순서·시간대는 바이트에 영향을 주지 않게 해요.
+ZIP 이 표현할 수 없는 시각은 UTC 1980~2107 년 범위에 맞추고, 초는 ZIP 규칙에 따라 2초 단위로 저장해요.
+
 원본 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
 다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `RIDI_SHA256` 이나
 `NERD_PINNED_SHA256` 을 고치세요. `NERD_PINNED_SHA256` 을 고치면 풀어 둔 베이스 글꼴도 새 zip 에서 다시 풀어요.
@@ -237,6 +264,20 @@ VERSION=1.7.0 ./build.sh
 ```sh
 python3 -m unittest discover tests
 ```
+
+일부 굵기만 고르면 릴리스용 `fonts/` 를 건드리지 않고 기본적으로 `build/preview-fonts/` 에 만들어요.
+`OUT_DIR` 로 출력 폴더를, `JETBATANG_FONTS` 로 검사할 폴더를 지정할 수 있어요. 없는 굵기의 검사는 건너뛰어요.
+
+```sh
+VERSION=1.7.0 ./build.sh Thin ThinItalic
+JETBATANG_FONTS=build/preview-fonts python3 -m unittest discover tests
+
+VERSION=1.7.0 OUT_DIR="build/preview fonts" ./build.sh Regular
+JETBATANG_FONTS="build/preview fonts" python3 -m unittest discover tests
+```
+
+부분 빌드는 완성된 열여섯 종의 빌드 기록을 만들지 않아서 릴리스로 묶을 수 없어요. 열여섯 종을 모두 다른 폴더에
+만들었다면 `OUT_DIR="그 폴더" ./package.sh` 로 묶을 수 있어요.
 
 빌드 값을 바꿀 때도 `VERSION` 은 같이 넘겨요. `SCALE`·`YSHIFT`·`EMBOLDEN_SCALE` 이 숫자가 아니거나 `JOBS` 가
 0 이상의 정수가 아니면 원본을 내려받기 전에 멈춰요. 굵기 목록과 굵기마다의 한글 굵기 증가량은
@@ -256,15 +297,20 @@ VERSION=1.7.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./
 한 종씩 세밀하게 조절하려면 `python3 build.py --help` 를 보세요. `build.py` 는 명령줄 입구이고, 글꼴을 합치는
 코드는 영역별로 `jetbatang/` 에 나눠 두었어요. 어느 모듈이 무엇을 하는지는 `jetbatang/__init__.py` 에 적혀 있어요.
 
+글꼴 고유 ID(`nameID 3`)에는 판·제조사 ID·PostScript 이름을 함께 적어 같은 스타일의 서로 다른 판을 구별해요.
+제조사 ID(`OS/2.achVendID`)는 원본 JetBrains의 `JB`를 물려받지 않고, 등록한 제조사 ID가 없다는 뜻의 `NONE`으로 적어요.
+
 열여섯 종이 모두 만들어지면 `build.sh` 가 어느 코드(`build.py`·`build.sh`·`requirements.txt`·`jetbatang/*.py`)와
-어느 판의 라이브러리로 만든 어느 파일인지 `fonts/build-info.json` 에 적어요. 코드는 빌드를 시작할 때 잡아 두고,
+어느 판의 라이브러리와 어느 기준 시각(`source_date_epoch`)으로 만든 어느 파일인지 `fonts/build-info.json` 에 적어요.
+`OUT_DIR` 를 지정했다면 그 폴더에 남겨요. 코드는 빌드를 시작할 때 잡아 두고,
 빌드하는 동안 코드가 바뀌었으면 기록하지 않아요. 회귀 검사는 이 기록으로 `fonts/` 가 지금 코드로 끝까지 만든
 것인지 확인해요. 기록이 없으면(예전 `build.sh` 로 만들었거나 빌드가 중간에 멈췄으면) 이 검사가 실패하니,
 `./build.sh` 를 한 번 다시 돌리세요.
 
 Releases 에 올릴 파일은 `./package.sh` 로 `dist/` 에 만들고, `dist/` 의 파일을 모두 올리면 돼요.
-`JetBatangNF-all.zip` 에는 글꼴과 `install-windows.ps1`, `LICENSE` 가 함께 들어가고, 낱개 `ttf` 와
-`install-windows.ps1`, 파일마다 해시를 적은 `SHA256SUMS` 도 따로 나와요.
+`JetBatangNF-all.zip` 에는 글꼴 열여섯 종과 `install-windows.ps1`, `LICENSE` 가 함께 들어가고,
+`JetBatangNF-basic.zip` 은 같은 설치 파일·라이선스와 기본 네 스타일만 담아요. 낱개 `ttf`, `install-windows.ps1`,
+두 ZIP 을 포함해 파일마다 해시를 적은 `SHA256SUMS` 도 따로 나와요.
 `package.sh` 는 `fonts/` 가 `fonts/build-info.json` 과 맞지 않으면 멈춰요. 코드를 고친 뒤 다시 빌드하지
 않았거나, 빌드가 중간에 실패했거나, 빌드한 뒤 글꼴이 바뀐 경우예요. 그때는 `./build.sh` 를 다시 돌리세요.
 RIDIBatang 글자를 하나라도 TrueType 외곽선으로 옮기지 못하면 그 굵기의 빌드가 실패해서 기록이 남지 않아요.

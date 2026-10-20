@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 재료를 내려받아 JetBatang NF 16 종을 fonts/ 에 만든다.
+# 재료를 내려받아 JetBatang NF 를 만든다. 접미사를 고르면 build/preview-fonts/ 에만 만든다.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -66,6 +66,15 @@ case "$JOBS" in
   ''|*[!0-9]*) echo "JOBS 는 0 이상의 정수여야 해요: '$JOBS'"; exit 1;;
 esac
 
+# 모든 작업과 빌드 기록이 같은 고정 시각을 쓴다. 잘못된 값이면 다운로드 전에 멈춘다.
+SOURCE_DATE_EPOCH=$(python3 -c 'import sys
+from jetbatang.release import source_date_epoch
+try:
+    print(source_date_epoch("."))
+except ValueError as exc:
+    sys.exit(str(exc))')
+export SOURCE_DATE_EPOCH
+
 # 코드 해시와 라이브러리 판은 코드에서 무엇이든 읽기 전에 잡아 둔다. 아래 VARIANTS 처럼 여기서 읽어 둔 값도
 # 글꼴을 바꾸므로, 그 뒤에 코드가 바뀌면 끝날 때 견주어 기록하지 않는다.
 started=$(python3 -c 'import json; from jetbatang.release import snapshot; print(json.dumps(snapshot(".")))')
@@ -77,7 +86,37 @@ for variant in VARIANTS:
 VARIANTS=()
 while IFS= read -r variant; do VARIANTS+=("$variant"); done <<< "$variants"
 
-mkdir -p build fonts
+# 모르는 접미사는 재료나 출력 파일을 건드리기 전에 거절한다.
+for suffix in "$@"; do
+  known=false
+  for variant in "${VARIANTS[@]}"; do
+    if [ "$suffix" = "${variant%%:*}" ]; then known=true; break; fi
+  done
+  if ! "$known"; then
+    printf '알 수 없는 글꼴 접미사: %s\n' "$suffix" >&2
+    printf '사용 가능한 접미사:' >&2
+    printf ' %s' "${VARIANTS[@]%%:*}" >&2
+    printf '\n' >&2
+    exit 1
+  fi
+done
+# 요청 순서·중복과 관계없이 VARIANTS 순서를 지킨다.
+SELECTED=()
+for variant in "${VARIANTS[@]}"; do
+  if [ "$#" -eq 0 ]; then
+    SELECTED+=("$variant")
+  else
+    for suffix in "$@"; do
+      if [ "$suffix" = "${variant%%:*}" ]; then SELECTED+=("$variant"); break; fi
+    done
+  fi
+done
+if [ "$#" -eq 0 ]; then
+  OUT_DIR="${OUT_DIR:-fonts}"
+else
+  OUT_DIR="${OUT_DIR:-build/preview-fonts}"
+fi
+mkdir -p -- build "$OUT_DIR"
 
 sha256() {
   python3 -c 'import sys; from jetbatang.release import sha256_file; print(sha256_file(sys.argv[1]))' "$1"
@@ -171,7 +210,7 @@ build_one() {
   if log=$(python3 build.py \
       --base="build/$BASE_PREFIX-$suffix.ttf" \
       --donor=build/RIDIBatang.otf \
-      --out="fonts/JetBatangNF-$suffix.ttf" \
+      --out="$OUT_DIR/JetBatangNF-$suffix.ttf" \
       --family="$FAMILY" --style="$style" --font-version="$VERSION" \
       --scale="$SCALE" --yshift="$YSHIFT" "${args[@]}" 2>&1); then
     printf '==> %s\n%s\n' "$suffix" "$log"
@@ -181,21 +220,24 @@ build_one() {
   fi
 }
 export -f build_one
-export BASE_PREFIX FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE
+export BASE_PREFIX FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE OUT_DIR
 
 # 빌드가 도중에 멈추면 예전 기록이 새 파일과 섞여 남지 않게 먼저 지운다.
-python3 -c 'import pathlib; from jetbatang.release import MANIFEST; pathlib.Path("fonts", MANIFEST).unlink(missing_ok=True)'
-echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE, jobs=$JOBS)"
-printf '%s\n' "${VARIANTS[@]}" | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} ||
+python3 -c 'import pathlib, sys; from jetbatang.release import MANIFEST
+pathlib.Path(sys.argv[1], MANIFEST).unlink(missing_ok=True)' "$OUT_DIR"
+echo "==> 합치는 중 (version=$VERSION, scale=$SCALE, yshift=$YSHIFT, embolden×$EMBOLDEN_SCALE, jobs=$JOBS, out=$OUT_DIR)"
+printf '%s\n' "${SELECTED[@]}" | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} ||
   { echo "빌드에 실패한 굵기가 있어요. 위 로그를 확인하세요"; exit 1; }
-# 열여섯 종이 모두 끝났을 때만 어느 코드와 빌드 값으로 만든 어느 파일인지 적는다. package.sh 와 검사가 이걸 본다.
-python3 -c 'import json, sys
+# 열여섯 종을 이번에 모두 만든 경우에만 완전한 빌드 기록을 남긴다.
+if [ "${#SELECTED[@]}" -eq "${#VARIANTS[@]}" ]; then
+  python3 -c 'import json, sys
 from jetbatang.release import write_manifest
 try:
-    write_manifest(".", sys.argv[1], json.loads(sys.argv[2]), sys.argv[3:])
+    write_manifest(".", sys.argv[1], json.loads(sys.argv[2]), sys.argv[4:], fonts_dir=sys.argv[3])
 except ValueError as exc:
-    sys.exit(str(exc))' "$VERSION" "$started" ${custom[@]+"${custom[@]}"}
+    sys.exit(str(exc))' "$VERSION" "$started" "$OUT_DIR" ${custom[@]+"${custom[@]}"}
+fi
 
 echo
-echo "완료. fonts/ 를 확인하세요."
-ls -la fonts/
+echo "완료. $OUT_DIR/ 를 확인하세요."
+ls -la -- "$OUT_DIR/"

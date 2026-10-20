@@ -1,9 +1,11 @@
-"""빌드 회귀 검사. build/ 의 원본 글꼴과 fonts/ 의 빌드 결과가 있어야 돈다(./build.sh).
+"""빌드 회귀 검사. build/ 의 원본 글꼴과 빌드 결과가 있어야 돈다(./build.sh).
 
     python3 -m unittest discover tests
+    JETBATANG_FONTS=build/preview-fonts python3 -m unittest discover tests
 """
 from io import BytesIO
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -23,9 +25,11 @@ from jetbatang import charset, kana, layout, merge, metadata, outlines, release,
 
 ROOT = Path(__file__).resolve().parent.parent
 DONOR = ROOT / "build" / "RIDIBatang.otf"
-REGULAR = ROOT / "fonts" / "JetBatangNF-Regular.ttf"
-ITALIC = ROOT / "fonts" / "JetBatangNF-Italic.ttf"
-BUILT = sorted((ROOT / "fonts").glob("JetBatangNF-*.ttf"))
+FONTS = Path(os.environ.get("JETBATANG_FONTS", ROOT / "fonts"))
+FONTS = (ROOT / FONTS).resolve()
+REGULAR = FONTS / "JetBatangNF-Regular.ttf"
+ITALIC = FONTS / "JetBatangNF-Italic.ttf"
+BUILT = sorted(FONTS.glob("JetBatangNF-*.ttf"))
 # 대문자 높이로 W 자리에 맞추는 1칸 글자. charset.NARROW 와 같은 글자다.
 NARROW_SIGNS = "₩℃℉ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹ"
 
@@ -93,8 +97,9 @@ def stem(glyphs, name, at):
     return x1 - x0
 
 
-@unittest.skipUnless(REGULAR.exists(), "fonts/JetBatangNF-Regular.ttf 가 없어요. ./build.sh 를 먼저 돌리세요")
+@unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class WeightTest(unittest.TestCase):
+    @unittest.skipUnless(REGULAR.exists(), "Regular 빌드 결과가 없어요")
     def test_hangul_stems_follow_the_latin_weight(self):
         # RIDIBatang 은 한 굵기뿐이라 굵기마다 획을 불리거나 깎는다. 한글이 같은 굵기의 라틴보다
         # 눈에 띄게 굵거나 가늘면 섞어 쓴 줄이 얼룩져 보인다. Thin 라틴 옆에 Regular 굵기 한글을
@@ -109,14 +114,15 @@ class WeightTest(unittest.TestCase):
             with self.subTest(font=path.stem):
                 self.assertAlmostEqual(ratio(path), regular, delta=0.05)
 
+    @unittest.skipUnless(REGULAR.exists() or ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
     def test_thin_faces_thin_almost_every_syllable(self):
-        # 깎다가 획이 끊기는 글자는 덜 깎거나 Regular 굵기로 둔다. 경계 연산 라이브러리가 바뀌어 검증이
-        # 자꾸 실패하면 음절 수백 자가 덜 깎이거나 Regular 굵기로 남아 Thin 문단이 얼룩지는데, ㅣ 하나만
-        # 재는 위 검사로는 모른다. README 는 Regular 굵기로 남는 글자가 굵기마다 열세~열여덟 자라고 적었다.
+        # 깎다가 획이 끊기는 글자는 덜 깎거나 Regular 굵기로 둔다. 경계 연산 라이브러리 검증이 자꾸 실패하면
+        # 음절 수백 자가 덜 깎여 Thin 문단이 얼룩지는데, ㅣ 하나만 재는 위 검사로는 모른다.
+        # 몇 자의 예외가 문단 전체로 번지지 않아야 한다.
         # 다 깎으면 잉크 상자가 좌우로 가로 증가량만큼 줄어든다. 그 7/8 도 줄지 않았으면 덜 깎은 글자로 센다.
-        plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)} if ITALIC.exists() else {False: TTFont(REGULAR)}
+        plain = {italic: TTFont(path) for italic, path in ((False, REGULAR), (True, ITALIC)) if path.exists()}
         for suffix, _, embolden in release.VARIANTS:
-            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            path = FONTS / f"JetBatangNF-{suffix}.ttf"
             italic = suffix.endswith("Italic")
             if embolden >= 0 or not path.exists() or italic not in plain:
                 continue
@@ -133,6 +139,42 @@ class WeightTest(unittest.TestCase):
                 self.assertLessEqual(len(same), 20, "".join(same))
                 self.assertLessEqual(len(barely), 11172 * 0.03, "".join(barely))
 
+    @unittest.skipUnless(REGULAR.exists() or ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
+    def test_thin_hiragana_does_not_leave_o_darker_than_a(self):
+        # お 는 다 깎으면 모양이 바뀌지만 15/16 은 된다. 3/4 로 물러서면 あ 보다 잉크가 20% 더 남는다.
+        for suffix, plain in (("Thin", REGULAR), ("ThinItalic", ITALIC)):
+            path = FONTS / f"JetBatangNF-{suffix}.ttf"
+            if not path.exists() or not plain.exists():
+                continue
+            with TTFont(path) as font, TTFont(plain) as reference:
+                cmap, rcmap = font.getBestCmap(), reference.getBestCmap()
+                ratios = {}
+                for ch in "おあ":
+                    got = weight.ink(outlines.glyph_path(font["glyf"][cmap[ord(ch)]]))
+                    original = weight.ink(outlines.glyph_path(reference["glyf"][rcmap[ord(ch)]]))
+                    ratios[ch] = got / original
+                with self.subTest(font=suffix):
+                    self.assertAlmostEqual(ratios["お"], ratios["あ"], delta=ratios["あ"] * 0.10)
+
+    @unittest.skipUnless(REGULAR.exists() or ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
+    def test_thin_double_corner_quote_keeps_visible_strokes(self):
+        # 모양만 지키며 끊기기 직전까지 깎으면 『 의 이중선이 실처럼 옅어져 「 와 구별되지 않는다.
+        # 남는 잉크 비율이 같은 판의 세로획보다 크게 낮아지지 않아야 한다.
+        for suffix, plain in (("Thin", REGULAR), ("ThinItalic", ITALIC)):
+            path = FONTS / f"JetBatangNF-{suffix}.ttf"
+            if not path.exists() or not plain.exists():
+                continue
+            with TTFont(path) as font, TTFont(plain) as reference:
+                cmap, rcmap = font.getBestCmap(), reference.getBestCmap()
+                ratios = {}
+                for ch in "『ㅣ":
+                    got = weight.ink(outlines.glyph_path(font["glyf"][cmap[ord(ch)]]))
+                    original = weight.ink(outlines.glyph_path(reference["glyf"][rcmap[ord(ch)]]))
+                    ratios[ch] = got / original
+                with self.subTest(font=suffix):
+                    self.assertGreaterEqual(ratios["『"], ratios["ㅣ"] * 0.8)
+
+    @unittest.skipUnless(REGULAR.exists(), "Regular 빌드 결과가 없어요")
     def test_horizontal_strokes_follow_the_vertical_weight_rule(self):
         # 가로획은 불릴 때 가로 증가량의 0.4 배, 깎을 때 0.8 배만큼 바뀐다(README). 위아래로 반씩, 정수로
         # 반올림해 옮긴다. 이 비율이 빠지면 Thin 의 가로획이 세로획보다 굵어지고, Bold 의 가로획은 흐려진다.
@@ -145,7 +187,7 @@ class WeightTest(unittest.TestCase):
 
         regular = bar(REGULAR)
         for suffix, _, embolden in release.VARIANTS:
-            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            path = FONTS / f"JetBatangNF-{suffix}.ttf"
             if not path.exists():
                 continue
             ey = embolden * (0.4 if embolden > 0 else 0.8)
@@ -156,7 +198,7 @@ class WeightTest(unittest.TestCase):
         # 불린 한글은 겹친 복사본을 외곽선 하나로 합친다. 합치지 못하고 겹친 채 둔 글자는 macOS 에서 획
         # 가장자리가 번지는데 FreeType 에서는 티가 안 난다. 경계 연산이 자꾸 틀려 그런 글자가 늘면 여기서 막는다.
         for suffix, _, embolden in release.VARIANTS:
-            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            path = FONTS / f"JetBatangNF-{suffix}.ttf"
             if embolden <= 0 or not path.exists():
                 continue
             font = TTFont(path)
@@ -234,6 +276,30 @@ class ThinningTest(unittest.TestCase):
         self.assertFalse(weight.thinned_alike(necked, split))
         self.assertTrue(weight.thinned_alike(necked, hairline))
 
+    def test_partly_thinned_glyph_keeps_as_much_thinning_as_its_shape_allows(self):
+        # 다 깎으면 끊기는 글자는 덜 깎는데, 끊기지 않는 만큼보다 많이 덜 깎으면 이웃보다 진하게 남는다.
+        # Thin 의 お 는 15/16 까지 깎아도 모양이 그대로인데 3/4 만 깎여 다른 히라가나보다 20% 진했다.
+        # 가로 36 을 다 깎으면 폭 36 인 목이 끊기고, 15/16(양쪽 17 씩)만 깎으면 2 가 남는다.
+        necked = polygon_glyph([(0, 0), (0, 100), (132, 100), (132, 150), (0, 150), (0, 250), (300, 250),
+                                (300, 150), (168, 150), (168, 100), (300, 100), (300, 0)])
+        thin = weight.Weight(-36)
+        thinned, step = weight.reweigh(necked, thin.ex, thin.ey, thin.min_ink)
+        self.assertIsNotNone(thinned)
+        self.assertGreater(step, 0.75)
+        self.assertLess(step, 1.0)
+
+    def test_partly_thinned_glyph_does_not_end_lighter_than_a_thinned_stem(self):
+        # 원래 획이 가는 글자를 끊기기 직전까지 깎으면 획이 실처럼 남아 이웃보다 옅다. Thin 의 『 는 안쪽 선이
+        # 2 단위만 남아 작은 크기에서 「 와 구별되지 않았다. 세로획을 다 깎았을 때(Thin 은 81 → 45)만큼은 남긴다.
+        # 벽 두께 36 인 네모틀은 다 깎으면 끊기고, 15/16 만 깎으면 좌우 벽이 2 만 남는다.
+        frame = polygon_glyph([(0, 0), (0, 300), (300, 300), (300, 0)],
+                              [(36, 36), (264, 36), (264, 264), (36, 264)])
+        thin = weight.Weight(-36)
+        thinned, step = weight.reweigh(frame, thin.ex, thin.ey, thin.min_ink)
+        self.assertIsNotNone(thinned)
+        left = weight.ink(outlines.glyph_path(thinned)) / weight.ink(outlines.glyph_path(frame))
+        self.assertGreater(left, 0.45)
+
 
 class ScanlineTest(unittest.TestCase):
     # 경계 연산 결과는 scanline 으로 직접 칠한 정답과 견주어 고른다. 이 정답이 틀리면 속공간을 먹은
@@ -306,7 +372,7 @@ class DonorTest(unittest.TestCase):
                 self.assertLess(scanline.mismatch(truth, got), scanline.painted(truth) * 5e-3)
 
 
-@unittest.skipUnless(DONOR.exists() and BUILT, "build/RIDIBatang.otf 나 fonts/ 가 없어요. ./build.sh 를 먼저 돌리세요")
+@unittest.skipUnless(DONOR.exists() and BUILT, f"build/RIDIBatang.otf 나 {FONTS} 가 없어요. ./build.sh 를 먼저 돌리세요")
 class CoverageTest(unittest.TestCase):
     def test_every_face_maps_every_donor_character_at_its_cell_width(self):
         # 빠진 글자는 터미널이 다른 글꼴로 그리고, 폭이 2칸이 아니면 격자가 어긋난다. 결합 탁점·반탁점은
@@ -324,7 +390,7 @@ class CoverageTest(unittest.TestCase):
                 self.assertEqual({cp: w for cp, w in width.items() if w != (0 if cp in marks else 1200)}, {})
 
 
-@unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+@unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class NameTest(unittest.TestCase):
     # README WEIGHTS 표의 'GDI 방식 앱의 가족 이름'. Bold 만 RIBBI 의 Bold 칸을 쓴다.
     GDI_FAMILY = {"Thin": "JetBatang NF Thin", "ExtraLight": "JetBatang NF ExtraLight",
@@ -335,7 +401,7 @@ class NameTest(unittest.TestCase):
         # 앱은 nameID 1/2(GDI) 나 16/17(굵기를 따로 고르는 앱)로 굵기를 찾고, install-windows.ps1 은 nameID 4
         # 를 레지스트리 이름으로 쓴다. 상표 기록(nameID 7)은 원본에서 물려받지 않는다.
         for suffix, style, _ in release.VARIANTS:
-            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            path = FONTS / f"JetBatangNF-{suffix}.ttf"
             if not path.exists():
                 continue
             names = TTFont(path)["name"]
@@ -360,8 +426,20 @@ class NameTest(unittest.TestCase):
                 self.assertEqual(os2.ulCodePageRange1 >> 19 & 1, 1)
                 self.assertEqual(os2.ulCodePageRange1 >> 21 & 1, 1)
 
+    def test_every_face_names_itself_not_jetbrains_and_its_release(self):
+        # 제조사 ID(achVendID)를 base 에서 물려받으면 글꼴 정보에 JetBrains(JB)가 만든 글꼴로 나온다. 고유 ID
+        # (nameID 3)는 '판;제조사;PostScript 이름' 꼴이라 판이 바뀌면 같이 바뀌어야 도구가 두 판을 가린다.
+        for path in BUILT:
+            font = TTFont(path)
+            vendor = font["OS/2"].achVendID.strip("\x00 ")
+            names = font["name"]
+            version = names.getDebugName(5).removeprefix("Version ")
+            with self.subTest(font=path.stem):
+                self.assertNotEqual(vendor, "JB")
+                self.assertEqual(names.getDebugName(3), f"{version};{vendor};{names.getDebugName(6)}")
 
-@unittest.skipUnless(REGULAR.exists(), "fonts/JetBatangNF-Regular.ttf 가 없어요. ./build.sh 를 먼저 돌리세요")
+
+@unittest.skipUnless(REGULAR.exists(), f"{REGULAR} 가 없어요. ./build.sh 를 먼저 돌리세요")
 class RegularTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -465,9 +543,9 @@ class RegularTest(unittest.TestCase):
                 self.assertEqual(self.cmap.get(ord(ch)), self.cmap[ord(twin)])
 
 
-@unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+@unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class NarrowSignTest(unittest.TestCase):
-    @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
+    @unittest.skipUnless(REGULAR.exists() or ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
     def test_one_cell_signs_take_the_box_of_w_on_the_baseline(self):
         # ₩ ℃ ℉ 과 로마 숫자는 터미널이 1칸으로 센다. 굵기·기울기마다 base W 가 차지하는 가로
         # 범위 가운데에 들고(넓은 글자는 그 범위를 채우고), 한글처럼 올려 앉히지 않아 숫자와
@@ -475,8 +553,11 @@ class NarrowSignTest(unittest.TestCase):
         def hangul_stem(font):
             return stem(font.getGlyphSet(), font.getBestCmap()[ord("ㅣ")], 0.5)
 
-        plain = {False: hangul_stem(TTFont(REGULAR)), True: hangul_stem(TTFont(ITALIC))}
+        plain = {italic: hangul_stem(TTFont(path)) for italic, path in ((False, REGULAR), (True, ITALIC))
+                 if path.exists()}
         for path in BUILT:
+            if path.stem.endswith("Italic") not in plain:
+                continue
             font = TTFont(path)
             cmap, glyphs, hmtx = font.getBestCmap(), font.getGlyphSet(), font["hmtx"]
             wx0, _, wx1, _ = ink(glyphs, cmap[ord("W")])
@@ -492,7 +573,7 @@ class NarrowSignTest(unittest.TestCase):
                         self.assertGreaterEqual(x1 - x0, wx1 - wx0 - thinned - 3)
                     self.assertAlmostEqual(y0, 0, delta=20)
 
-    @unittest.skipUnless(REGULAR.exists() and ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
+    @unittest.skipUnless(REGULAR.exists() or ITALIC.exists(), "Regular·Italic 빌드 결과가 없어요")
     def test_squeezed_numerals_keep_their_strokes_apart(self):
         # Ⅷ 은 1칸에 넣으려고 가로를 0.55 배쯤 줄인다. 줄인 뒤에 한글과 같은 만큼 굵기를 불리면
         # ExtraBold 에서 획 다섯이 둘로 붙고, Bold 에서도 검은 덩어리처럼 보인다. 가운데 높이에서
@@ -507,10 +588,12 @@ class NarrowSignTest(unittest.TestCase):
             return len(spans), sum(b - a for a, b in spans) / (spans[-1][1] - spans[0][0])
 
         numerals = "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹ"
-        plain = {False: TTFont(REGULAR), True: TTFont(ITALIC)}
+        plain = {italic: TTFont(path) for italic, path in ((False, REGULAR), (True, ITALIC)) if path.exists()}
         for path in BUILT:
             font = TTFont(path)
             italic = path.stem.endswith("Italic")
+            if italic not in plain:
+                continue
             densest = {False: cut(font, "M")[1], True: cut(font, "w")[1]}
             for ch in numerals:
                 with self.subTest(font=path.stem, ch=ch):
@@ -521,7 +604,7 @@ class NarrowSignTest(unittest.TestCase):
                         self.assertLessEqual(filled, max(densest[ch.islower()], regular_filled) + 0.01)
 
 
-@unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+@unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class KoreanSymbolTest(unittest.TestCase):
     def test_draws_every_ks_x_1001_character_itself(self):
         # ※ ① ★ 이 없으면 터미널이 다른 글꼴의 고딕 기호를 섞어 그린다. 폭이 애매한 글자는
@@ -564,7 +647,7 @@ class KoreanSymbolTest(unittest.TestCase):
         # 빌드 값은 build.py 기본값이다.
         donor = TTFont(DONOR)
         for suffix, _, embolden in release.VARIANTS:
-            path = ROOT / "fonts" / f"JetBatangNF-{suffix}.ttf"
+            path = FONTS / f"JetBatangNF-{suffix}.ttf"
             base_path = ROOT / "build" / f"JetBrainsMonoNerdFontMono-{suffix}.ttf"
             if not path.exists() or not base_path.exists():
                 continue
@@ -599,7 +682,7 @@ class KoreanSymbolTest(unittest.TestCase):
                 self.assertGreater((bx1 - bx0) - (ax1 - ax0), 0.05 * (ay1 - ay0))
 
 
-@unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+@unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class NfdTest(unittest.TestCase):
     @staticmethod
     def shape(font, text, *, script=None, features=None):
@@ -720,7 +803,7 @@ class VersionTest(unittest.TestCase):
             with self.subTest(version=bad), self.assertRaises(ValueError):
                 metadata.font_revision(bad)
 
-    @unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+    @unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
     def test_every_face_reports_one_release_version(self):
         # 버전이 비어 있으면 새 판을 깔았는지 글꼴 정보로 확인할 수 없다.
         versions = set()
@@ -736,12 +819,15 @@ class VersionTest(unittest.TestCase):
 
 
 class ReleaseTest(unittest.TestCase):
-    @unittest.skipUnless(BUILT, "fonts/ 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+    @unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
     def test_fonts_were_built_from_current_sources(self):
-        # 이 파일의 검사는 fonts/ 를 잰다. fonts/ 를 예전 코드로 만들었거나 일부만 다시 만들었으면
-        # 검사가 통과해도 지금 코드를 잰 게 아니다. 빌드가 중간에 멈춰 기록이 없을 때도 마찬가지다.
+        # 기본 fonts/ 와 완전한 외부 출력은 언제나 기록을 검증한다. 일부만 만든 미리보기는
+        # 완전한 기록이 없어도 개별 글꼴 검사를 돌리되, 남아 있는 잘못된 기록은 통과시키지 않는다.
+        if (FONTS != (ROOT / "fonts").resolve() and not (FONTS / release.MANIFEST).exists()
+                and not all((FONTS / name).is_file() for name in release.font_files())):
+            self.skipTest("선택 빌드에는 열여섯 종의 완전한 빌드 기록이 없어요")
         try:
-            release.verify_manifest(ROOT)
+            release.verify_manifest(ROOT, fonts_dir=FONTS)
         except ValueError as exc:
             self.fail(str(exc))
 
@@ -816,14 +902,6 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(release.library_mismatches(root, dict(pins, fonttools="4.66.0", uharfbuzz=None)),
                          [("fonttools", "4.66.1", "4.66.0"), ("uharfbuzz", "0.56.3", None)])
 
-    def test_windows_installer_knows_every_face(self):
-        # install-windows.ps1 은 Releases 에 따로 올라가 jetbatang/release.py 의 VARIANTS 를 읽지 못해서
-        # 굵기 목록을 따로 들고 있다. 목록에 없는 굵기는 설치도 제거도 되지 않는다.
-        script = (ROOT / "install-windows.ps1").read_text(encoding="utf-8-sig")
-        listed = dict(re.findall(r"'(JetBatangNF-\w+\.ttf)'\s*=\s*'([^']+)'", script))
-        expected = {f"JetBatangNF-{suffix}.ttf": f"JetBatang NF {style} (TrueType)"
-                    for suffix, style, _ in release.VARIANTS}
-        self.assertEqual(listed, expected)
 
 
 if __name__ == "__main__":

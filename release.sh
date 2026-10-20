@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 VERSION="${VERSION:-}"
 [ -n "$VERSION" ] || { echo "VERSION 을 지정하세요. 예: VERSION=1.8.0 ./release.sh"; exit 1; }
 export TAG="v$VERSION"
+export OUT_DIR="${OUT_DIR:-fonts}"
 command -v gh >/dev/null || { echo "gh 가 필요합니다"; exit 1; }
 
 # 빌드에 십 분 넘게 걸리니, 릴리스로 내보내면 안 되는 상태는 그 전에 모두 본다.
@@ -31,12 +32,12 @@ found=$(gh api 'repos/{owner}/{repo}/releases' --paginate --jq '.[] | select(.ta
 
 VERSION="$VERSION" ./build.sh
 # 기본값과 다른 빌드 값을 환경에 남겨 둔 채 빌드했으면 package.sh 는 경고만 하지만 릴리스는 막는다.
-python3 -c 'import sys
+python3 -c 'import os, sys
 from jetbatang.release import built_library_warnings, custom_build_warnings, verify_manifest
-info = verify_manifest(".")
+info = verify_manifest(".", fonts_dir=os.environ["OUT_DIR"])
 lines = built_library_warnings(".", info["libraries"]) + custom_build_warnings(info)
 sys.exit("\n".join(lines + ["그래서 릴리스를 멈춰요"]) if lines else None)'
-python3 -m unittest discover tests
+JETBATANG_FONTS="$OUT_DIR" python3 -m unittest discover tests
 ./package.sh
 
 # 태그는 검사를 다 통과한 뒤에만 올린다. 중간에 실패하면 고친 커밋에 같은 태그를 붙여 다시 돌리면 된다.

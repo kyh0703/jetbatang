@@ -9,6 +9,10 @@ OFL_URL = "https://openfontlicense.org"
 
 OFL_DESC = "This Font Software is licensed under the SIL Open Font License, Version 1.1."
 
+# 제조사 ID(OS/2 achVendID). 등록한 ID 가 없을 때 흔히 쓰는 값이다. base 의 JB 를 그대로 두면 글꼴 정보에
+# JetBrains 가 만든 글꼴로 나온다.
+VENDOR = "NONE"
+
 
 def font_revision(version):
     """릴리스 버전 X.Y.Z 를 head.fontRevision 값으로 바꾼다. 1.9.0 < 1.10.0 처럼 태그 순서를 지킨다.
@@ -61,7 +65,7 @@ def set_os2(base):
 
 
 def set_names(base, donor, family, style, font_version):
-    """이름 테이블과 판 번호를 새로 쓴다.
+    """이름 테이블, 판 번호, 제조사 ID 를 새로 쓴다.
 
     원본의 이름·상표 기록은 통째로 버리고 새로 쓴다.
     base 의 Reserved Font Name 과 donor 의 등록상표를 물려받지 않기 위해서다.
@@ -79,9 +83,10 @@ def set_names(base, donor, family, style, font_version):
     drop = set(range(0, 15)) | {16, 17, 18, 20, 21, 22}
     base["name"].names = [n for n in base["name"].names if n.nameID not in drop]
     for nid, value in [(0, copyright_), (1, fam1), (2, sub2),
-                       (3, f"{ps};merged-with-RIDIBatang"), (4, full),
+                       (3, f"{font_version};{VENDOR};{ps}"), (4, full),
                        (5, f"Version {font_version}"), (6, ps),
                        (13, OFL_DESC), (14, OFL_URL), (16, family), (17, style)]:
         set_name(base, nid, value)
     # 비워 두면 base 의 2.304 가 남아 JetBrains Mono 와 같은 판으로 보인다.
     base["head"].fontRevision = font_revision(font_version)
+    base["OS/2"].achVendID = VENDOR

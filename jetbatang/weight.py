@@ -287,24 +287,39 @@ def thinned_alike(glyph, thinned):
 
 # 굵기를 바꾸다 모양이 바뀌는 글자는 이 비율로 덜 바꿔 본다. Thin 에서는 ㎡ 『 의 가는 획이
 # 사라지고, Bold 에서는 1칸으로 줄인 ⑫ 의 숫자가 원에 붙는다. 끝까지 안 되면 그대로 둔다.
-REWEIGH_STEPS = (1.0, 0.75, 0.5, 0.25)
+# 불릴 때는 1/4 씩 줄인다. 더 잘게 줄이면 ⑫ ⓟ 의 숫자와 글자가 원에 붙기 직전까지 불어 작은 크기에서 뭉쳐 보인다.
+EMBOLDEN_STEPS = (1.0, 0.75, 0.5, 0.25)
+# 깎을 때는 1/16 씩 줄인다. 1/4 씩 줄이면 15/16 까지 깎아도 되는 Thin 의 お 가 3/4 만 깎여 다른 히라가나보다 20% 진했다.
+THIN_STEPS = tuple(k / 16 for k in range(16, 0, -1))
+
+# RIDIBatang 의 세로획 굵기. 깎을 때 덜 깎는 글자가 얼마나 옅어져도 되는지를 이 획이 깎이는 만큼으로 잰다.
+STEM = 81
+# 덜 깎는 글자는 세로획을 다 깎았을 때 남는 잉크 비율의 이만큼보다 옅어지지 않게 한다. 원래 획이 가는 글자를
+# 끊기기 직전까지 깎으면 획이 실처럼 남는다(Thin 의 『 는 안쪽 선이 2 단위만 남아 「 와 구별되지 않았다).
+# 1 보다 조금 작게 두는 건 가나가 한글보다 가늘어서다. 다 깎은 히라가나는 세로획보다 10% 쯤 옅다.
+MIN_INK = 0.9
 
 
-def reweigh(glyph, gx, gy):
+def reweigh(glyph, gx, gy, min_ink=0.0):
     """획을 가로 gx, 세로 gy 만큼 불리거나(양수) 깎아(음수) 외곽선 하나로 만든 글리프와 실제로
     바꾼 비율. 모양이 바뀌면 덜 바꿔 본다. 끝까지 안 되면 (None, 0).
 
     불릴 때는 1 단위 격자로 덩어리와 속공간을 짝지어 본다. 1 단위보다 좁아진 틈은 붙은 것으로 보아,
-    ExtraBold ⓟ 의 p 가 원에 거의 닿는 것도 막는다. 깎을 때는 thinned_alike 로 본다."""
+    ExtraBold ⓟ 의 p 가 원에 거의 닿는 것도 막는다. 깎을 때는 thinned_alike 로 보고, 덜 깎을 때는
+    잉크가 원래의 min_ink 배보다 줄지 않는 데까지만 깎는다."""
     emboldening = gx > 0 or gy > 0
     shape = structure_of(glyph) if emboldening else None
-    for step in REWEIGH_STEPS:
+    floor = 0.0 if emboldening else min_ink * ink(glyph_path(glyph))
+    for step in EMBOLDEN_STEPS if emboldening else THIN_STEPS:
         ring = embolden_ring(abs(gx) * step, abs(gy) * step)
         result = union_path(glyph, ring) if emboldening else thin_copies(glyph, ring)
         reweighed = None if result is None else to_glyph(result)
         if reweighed is None:
             continue
-        if same_structure(shape, structure_of(reweighed)) if emboldening else thinned_alike(glyph, reweighed):
+        if emboldening:
+            if same_structure(shape, structure_of(reweighed)):
+                return reweighed, step
+        elif thinned_alike(glyph, reweighed) and (step == 1.0 or ink(glyph_path(reweighed)) >= floor):
             return reweighed, step
     return None, 0.0
 
@@ -329,3 +344,5 @@ class Weight:
         self.ex, self.ey = ex, ey
         self.thinner = ex < 0 or ey < 0
         self.emboldens = ex > 0 or ey > 0
+        # 덜 깎는 글자가 남겨야 하는 잉크 비율. reweigh 의 min_ink 로 넘긴다.
+        self.min_ink = MIN_INK * max(STEM + ex, 0) / STEM if self.thinner else 0.0

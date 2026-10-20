@@ -7,28 +7,40 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-command -v zip >/dev/null || { echo "zip 이 필요합니다"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 이 필요합니다"; exit 1; }
-# 첫 줄은 버전, 나머지는 기록에 있는 글꼴 파일 이름이다. jetbatang/release.py 는 표준 라이브러리만 쓴다.
+# 첫 줄은 버전, 둘째 줄은 빌드 시각, 나머지는 기록에 있는 글꼴 파일 이름이다.
 # 빌드할 때 깔려 있던 라이브러리가 requirements.txt 와 달랐거나, 기본값과 다른 빌드 값으로 만들었으면
 # 알린다. 막지는 않는다.
-checked=$(python3 -c 'import sys
+checked=$(python3 -c 'import os, sys
+from pathlib import Path
 from jetbatang.release import built_library_warnings, custom_build_warnings, verify_manifest
+fonts = Path(os.environ.get("OUT_DIR") or "fonts")
 try:
-    info = verify_manifest(".")
+    info = verify_manifest(".", fonts_dir=fonts)
 except ValueError as exc:
     sys.exit(str(exc))
 for line in built_library_warnings(".", info["libraries"]) + custom_build_warnings(info):
     print(line, file=sys.stderr)
-print(info["version"], *info["fonts"], sep="\n")')
+print(info["version"], info["source_date_epoch"], *(fonts / name for name in info["fonts"]), sep="\n")')
 version=${checked%%$'\n'*}
+remaining=${checked#*$'\n'}
+epoch=${remaining%%$'\n'*}
 fonts=()
-while IFS= read -r name; do fonts+=("fonts/$name"); done <<< "${checked#*$'\n'}"
+while IFS= read -r name; do fonts+=("$name"); done <<< "${remaining#*$'\n'}"
 
 rm -rf dist
 mkdir -p dist
 cp "${fonts[@]}" install-windows.ps1 dist/
-zip -qj dist/JetBatangNF-all.zip "${fonts[@]}" install-windows.ps1 LICENSE
+# 빌드 기록의 시각으로 묶는다. 지금의 시각·파일 권한·수정 시각이 ZIP 바이트를 흔들지 않게 한다.
+python3 -c 'import sys
+from pathlib import Path
+from jetbatang.release import BASIC_FONTS, write_archive
+epoch = int(sys.argv[1])
+fonts = list(map(Path, sys.argv[2:]))
+extras = [Path("install-windows.ps1"), Path("LICENSE")]
+write_archive("dist/JetBatangNF-all.zip", fonts + extras, epoch)
+write_archive("dist/JetBatangNF-basic.zip", [path for path in fonts if path.name in BASIC_FONTS] + extras, epoch)' \
+  "$epoch" "${fonts[@]}"
 # 받은 사람이 sha256sum -c SHA256SUMS 로 확인할 수 있게 dist/ 의 파일마다 해시를 적는다.
 python3 -c 'import pathlib
 from jetbatang.release import sha256_file

@@ -3,6 +3,9 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import subprocess
+import time
+import zipfile
 from pathlib import Path
 
 
@@ -37,6 +40,13 @@ VARIANTS = [
 # 적어서, 검사와 package.sh 가 예전 코드로 만들었거나 일부만 다시 만든 fonts/ 를 알아보게 한다.
 MANIFEST = "build-info.json"
 
+# 보통 터미널에서 쓰는 네 스타일. 전체 묶음과 별도로 작은 기본 묶음을 만든다.
+BASIC_FONTS = tuple(f"JetBatangNF-{suffix}.ttf" for suffix in ("Regular", "Bold", "Italic", "BoldItalic"))
+
+# ZIP 의 DOS 시각은 UTC 1980~2107 년, 2초 단위로만 저장한다.
+ZIP_MIN_EPOCH = 315532800
+ZIP_MAX_EPOCH = 4354819198
+
 # 같은 재료로도 이 파일들이 바뀌면 글꼴이 달라진다. 재료의 해시는 build.sh 에 있다.
 SOURCES = ("build.py", "build.sh", "requirements.txt", "jetbatang/*.py")
 # 라이브러리 판을 고정한 파일. name==version 줄만 읽는다.
@@ -49,6 +59,35 @@ def sha256_file(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def source_date_epoch(root):
+    """SOURCE_DATE_EPOCH, 소스 커밋 시각, .git 없는 소스 묶음의 고정 시각 순서로 고른다."""
+    value = os.environ.get("SOURCE_DATE_EPOCH")
+    if value is None:
+        root = Path(root)
+        if not (root / ".git").exists():
+            return ZIP_MIN_EPOCH
+        try:
+            value = subprocess.check_output(
+                ["git", "-C", str(root), "log", "-1", "--format=%ct"], stderr=subprocess.DEVNULL, text=True
+            ).strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise ValueError("커밋 시각을 읽을 수 없어요. Git 을 확인하거나 SOURCE_DATE_EPOCH 를 지정하세요") from exc
+    if not value.isascii() or not value.isdecimal():
+        raise ValueError(f"SOURCE_DATE_EPOCH 는 0 이상의 정수여야 해요: {value!r}")
+    return int(value)
+
+
+def write_archive(path, files, epoch):
+    """입력 파일의 순서·수정 시각·권한·시스템 시간대에 관계없이 같은 ZIP 을 쓴다."""
+    stamp = time.gmtime(max(ZIP_MIN_EPOCH, min(epoch, ZIP_MAX_EPOCH)))[:6]
+    with zipfile.ZipFile(path, "w") as archive:
+        for source in sorted(map(Path, files), key=lambda item: item.name):
+            entry = zipfile.ZipInfo(source.name, date_time=stamp)
+            entry.create_system = 3
+            entry.external_attr = 0o100644 << 16
+            archive.writestr(entry, source.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
 
 def sources_digest(root):
@@ -114,8 +153,9 @@ def built_library_warnings(root, libraries):
 
 
 def snapshot(root):
-    """빌드를 시작할 때의 코드 해시와 깔린 라이브러리 판. write_manifest 가 끝날 때와 견준다."""
-    return {"sources": sources_digest(root), "libraries": installed_versions(pinned_versions(root))}
+    """빌드를 시작할 때의 코드·라이브러리·고정 시각. 개별 빌드와 매니페스트가 같은 시각을 쓴다."""
+    return {"sources": sources_digest(root), "libraries": installed_versions(pinned_versions(root)),
+            "source_date_epoch": source_date_epoch(root)}
 
 
 def font_files():
@@ -123,14 +163,22 @@ def font_files():
     return [f"JetBatangNF-{suffix}.ttf" for suffix, _, _ in VARIANTS]
 
 
-def write_manifest(root, version, started, custom=()):
+def _font_directory(root, fonts_dir):
+    if fonts_dir is None:
+        return Path(root) / "fonts"
+    directory = Path(fonts_dir)
+    return directory if directory.is_absolute() else Path(root) / directory
+
+
+def write_manifest(root, version, started, custom=(), *, fonts_dir=None):
     """열여섯 종을 다 만든 뒤 기록을 남긴다. started 는 빌드를 시작할 때 잡은 snapshot 이고, custom 은
     기본값과 다르게 준 빌드 값("SCALE=1.05" 꼴)이다. 그사이에 코드가 바뀌었으면 어느 코드로 만든 글꼴인지
     알 수 없어서, 기록하지 않고 ValueError."""
     if sources_digest(root) != started["sources"]:
         raise ValueError("빌드하는 동안 코드가 바뀌었어요. ./build.sh 로 다시 빌드하세요")
-    fonts = Path(root) / "fonts"
+    fonts = _font_directory(root, fonts_dir)
     info = {"version": version, "sources": started["sources"], "libraries": started["libraries"],
+            "source_date_epoch": started["source_date_epoch"],
             "custom": list(custom), "fonts": {name: sha256_file(fonts / name) for name in font_files()}}
     # 쓰다 멈춰도 반쯤 쓴 기록이 남지 않게 다 쓴 뒤에 바꿔 넣는다.
     part = fonts / (MANIFEST + ".part")
@@ -138,28 +186,29 @@ def write_manifest(root, version, started, custom=()):
     os.replace(part, fonts / MANIFEST)
 
 
-def verify_manifest(root):
-    """fonts/ 가 지금 코드로 열여섯 종을 끝까지 빌드한 그대로인지 본다. 맞으면 기록(dict), 아니면 ValueError."""
-    fonts = Path(root) / "fonts"
+def verify_manifest(root, *, fonts_dir=None):
+    """선택한 출력 폴더가 지금 코드로 열여섯 종을 끝까지 빌드한 그대로인지 본다. 아니면 ValueError."""
+    fonts = _font_directory(root, fonts_dir)
     rebuild = "./build.sh 로 다시 빌드하세요"
     try:
         info = json.loads((fonts / MANIFEST).read_text())
     except FileNotFoundError:
-        raise ValueError(f"fonts/{MANIFEST} 가 없어요. 빌드가 끝나지 않았거나 예전 build.sh 로 만든 "
-                         f"fonts/ 예요. {rebuild}") from None
+        raise ValueError(f"{fonts / MANIFEST} 가 없어요. 빌드가 끝나지 않았거나 예전 build.sh 로 만든 "
+                         f"글꼴이에요. {rebuild}") from None
     except ValueError:
         info = None
     if not (isinstance(info, dict) and isinstance(info.get("version"), str)
             and isinstance(info.get("sources"), str) and isinstance(info.get("libraries"), dict)
-            and isinstance(info.get("custom"), list) and isinstance(info.get("fonts"), dict)):
-        raise ValueError(f"fonts/{MANIFEST} 를 읽을 수 없어요. {rebuild}")
+            and isinstance(info.get("custom"), list) and isinstance(info.get("fonts"), dict)
+            and type(info.get("source_date_epoch")) is int and info["source_date_epoch"] >= 0):
+        raise ValueError(f"{fonts / MANIFEST} 를 읽을 수 없어요. {rebuild}")
     if info["sources"] != sources_digest(root):
-        raise ValueError(f"fonts/ 는 지금과 다른 {'·'.join(SOURCES)} 로 만들었어요. {rebuild}")
+        raise ValueError(f"{fonts} 는 지금과 다른 {'·'.join(SOURCES)} 로 만들었어요. {rebuild}")
     if list(info["fonts"]) != font_files():
-        raise ValueError(f"fonts/{MANIFEST} 의 굵기 목록이 VARIANTS 와 달라요. {rebuild}")
+        raise ValueError(f"{fonts / MANIFEST} 의 굵기 목록이 VARIANTS 와 달라요. {rebuild}")
     for name, digest in info["fonts"].items():
         if not (fonts / name).exists() or sha256_file(fonts / name) != digest:
-            raise ValueError(f"fonts/{name} 가 빌드한 뒤에 바뀌었거나 없어요. {rebuild}")
+            raise ValueError(f"{fonts / name} 가 빌드한 뒤에 바뀌었거나 없어요. {rebuild}")
     return info
 
 
