@@ -1,0 +1,28 @@
+# PR 과 main 푸시마다 글꼴 없이 도는 검사를 돌린다. 빌드한 글꼴을 재는 검사는 fonts/ 가 없으면
+# 건너뛴다. 열여섯 종을 빌드해 재는 일은 릴리스할 때 release.sh 가 한다.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: 셸 스크립트 문법
+        run: for script in build.sh package.sh release.sh; do bash -n "$script"; done
+      - name: 회귀 검사
+        run: python -m unittest discover tests

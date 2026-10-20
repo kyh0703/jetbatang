@@ -283,6 +283,8 @@ VERSION=X.Y.Z uv run --no-project --with-requirements requirements.txt ./release
 있거나, 같은 판의 릴리스가 초안까지 포함해 이미 있으면 빌드하기 전에 멈춰요. 기본값과 다른 빌드 값으로 만들었으면
 검사하기 전에 멈춰요. 태그는 검사를 다 통과한 뒤에만 올리니, 중간에 실패하면 고친 커밋으로 다시 돌리면 돼요.
 
+PR 과 `main` 푸시에서는 `.github/workflows/ci.yml` 이 셸 스크립트 문법과 글꼴 없이 도는 검사만 돌려요.
+
 ## LICENSE
 
 [SIL Open Font License 1.1](LICENSE). 원본 글꼴 두 개 모두 같은 라이선스예요.
