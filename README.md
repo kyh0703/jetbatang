@@ -270,6 +270,8 @@ python3 -c 'from fontTools.ttLib import TTFont; print(TTFont("sources/RIDIBatang
 다르면 빌드하지 않고 멈춰요. 받은 zip 이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `NERD_PINNED_SHA256` 을
 고치세요. 고치면 풀어 둔 베이스 글꼴도 새 zip 에서 다시 풀어요. Nerd Fonts 새 판으로 올려 릴리스하려면 `build.sh` 의
 `NERD_VERSION` 기본값과 `NERD_PINNED`, `NERD_PINNED_SHA256` 을 함께 고쳐요. 해시는 그 릴리스의 `SHA-256.txt` 에 있어요.
+새 zip 의 `README.md` 에 있는 아이콘 묶음 표(`unzip -p build/JetBrainsMono-<판>.zip README.md`)가 바뀌었으면
+`LICENSE` 의 아이콘 목록도 맞춰 고쳐요.
 `NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의 `SHA-256.txt` 로 확인하고, 판을 바꾸면
 베이스 글꼴도 새로 받아요. 예전 `build.sh` 로 받아 둔 `build/` 에서는 처음 한 번 Nerd Font 를 다시 받거나 다시 풀어요.
 
@@ -354,8 +356,13 @@ PR 과 `main` 푸시에서는 `.github/workflows/ci.yml` 이 셸 스크립트 �
 
 ## LICENSE
 
-[SIL Open Font License 1.1](LICENSE). 원본 글꼴 두 개 모두 같은 라이선스예요. `sources/RIDIBatang.otf` 는 빌드에 쓰려고
-RIDIBatang 원본을 고치지 않고 넣어 둔 파일로, 같은 라이선스를 따라요.
+[SIL Open Font License 1.1](LICENSE). 라틴 글자를 가져온 JetBrains Mono 와 한글을 가져온 RIDIBatang 이 이 라이선스예요.
+`sources/RIDIBatang.otf` 는 빌드에 쓰려고 RIDIBatang 원본을 고치지 않고 넣어 둔 파일로, 같은 라이선스를 따라요.
+
+아이콘은 Nerd Fonts 가 여러 아이콘 묶음에서 가져와 글꼴 크기에 맞춘 것을 베이스 글꼴에서 가져왔어요. 그래서 아이콘은
+묶음마다 원래 라이선스를 따라요. Codicons·Font Awesome 은 출처를 밝혀야 하는 CC BY 4.0, MaterialDesign 은
+Apache 2.0 이고, 나머지는 MIT·OFL 1.1·Unlicense 예요. 묶음마다의 판·라이선스·출처는 [LICENSE](LICENSE) 에 적어 두었고,
+`LICENSE` 는 릴리스 ZIP 에도 들어가요.
 
 - **JetBrains Mono** — Copyright 2020 The JetBrains Mono Project Authors
 - **Nerd Fonts** — Ryan L McIntyre and contributors

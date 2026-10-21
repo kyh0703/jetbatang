@@ -1,15 +1,40 @@
 JetBatang NF
 ============
 
-A derivative work combining two fonts, both licensed under the
-SIL Open Font License, Version 1.1.
+A derivative work combining two fonts licensed under the SIL Open Font
+License, Version 1.1, with the icon glyphs that Nerd Fonts adds to one of
+them. The icon glyphs keep the licenses of their icon sets listed below.
 
-  Latin glyphs, symbols and Nerd Font icons
+  Latin glyphs and symbols
     JetBrains Mono / JetBrainsMono Nerd Font
     Copyright 2020 The JetBrains Mono Project Authors
     (https://github.com/JetBrains/JetBrainsMono)
     Nerd Fonts patching by Ryan L McIntyre and contributors
     (https://github.com/ryanoasis/nerd-fonts)
+
+  Icon glyphs
+    From JetBrainsMono Nerd Font Mono (Nerd Fonts v3.5.1). Nerd Fonts took
+    them from these icon sets and scaled them to the font
+    (https://github.com/ryanoasis/nerd-fonts/blob/v3.5.1/src/glyphs/README.md).
+
+    Icon set                Version          License      Upstream
+    Codicons                0.0.45           CC BY 4.0    https://github.com/microsoft/vscode-codicons
+    Devicons                2.17.0           MIT          https://github.com/devicons/devicon
+    extraglyphs             -                MIT          https://github.com/source-foundry/Hack
+    Font Awesome            6.5.1            CC BY 4.0    https://github.com/FortAwesome/Font-Awesome
+    Font Awesome Extension  0.0.3            MIT          https://github.com/AndreLZGava/font-awesome-extension
+    Font Logos              1.3.0            Unlicense    https://github.com/lukas-w/font-logos
+    MaterialDesign          Oct 6, 2022      Apache 2.0   https://github.com/Templarian/MaterialDesign-Font
+    Octicons                18.3.0           MIT          https://github.com/primer/octicons
+    Seti and original       0.8.1            MIT          https://github.com/jesseweed/seti-ui
+    Pomicons                1.001            OFL 1.1 RFN  https://github.com/gabrielelana/pomicons
+    Powerline Extra         1.200            MIT          https://github.com/ryanoasis/powerline-extra-symbols
+    Powerline Symbols       1.000 (ca 2013)  MIT          https://github.com/powerline/powerline
+    Power Symbols IEC       Feb 2015         MIT          https://github.com/jloughry/Unicode
+    Weather Icons           2.0.10 (1.100)   OFL 1.1      https://github.com/erikflowers/weather-icons
+
+    CC BY 4.0   https://creativecommons.org/licenses/by/4.0/
+    Apache 2.0  https://www.apache.org/licenses/LICENSE-2.0
 
   Hangul glyphs
     RIDIBatang (https://ridicorp.com/ridibatang/)
@@ -18,7 +43,8 @@ SIL Open Font License, Version 1.1.
     This Font Software is licensed under the SIL Open Font License, Version 1.1.
     리디바탕의 저작권은 리디주식회사가 소유하고 있습니다.
 
-This derivative is distributed under the same license.
+This derivative is distributed under the SIL Open Font License, Version 1.1,
+below. The icon glyphs also stay under the licenses of their icon sets above.
 
 "JetBrains Mono" is a trademark of JetBrains s.r.o. and "RIDIBatang" is a
 registered trademark of RIDI CORPORATION. This project is not affiliated with,
