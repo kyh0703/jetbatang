@@ -247,10 +247,24 @@ VERSION=1.8.0 ./build.sh
 ZIP 은 빌드 기록에 남긴 시각을 쓰고, 파일의 수정 시각·권한·나열 순서·시간대는 바이트에 영향을 주지 않게 해요.
 ZIP 이 표현할 수 없는 시각은 UTC 1980~2107 년 범위에 맞추고, 초는 ZIP 규칙에 따라 2초 단위로 저장해요.
 
-RIDIBatang 은 [리디바탕 페이지](https://ridicorp.com/ridibatang/)에서 받은 파일을 고치지 않고 `sources/RIDIBatang.otf` 에
-넣어 뒀어요. 빌드할 때 내려받지 않아서 사이트 주소가 바뀌어도 빌드할 수 있어요. 새 판이 나오면 이 파일만 바꿔
-커밋하세요. 파일이 바뀌면 빌드 기록의 코드 해시도 바뀌어서, 예전 파일로 만든 `fonts/` 는 회귀 검사와 `package.sh` 가
-받지 않아요. 예전 `build.sh` 가 받아 둔 `build/RIDIBatang.otf` 는 더 쓰지 않으니 지워도 돼요.
+RIDIBatang 은 [리디바탕 페이지](https://ridicorp.com/ridibatang/)의 '리디바탕 다운로드'
+(`https://ridicorp.com/wp-content/themes/ridicorp/css/font/RIDIBatang.otf`)로 받은 파일을 고치지 않고
+`sources/RIDIBatang.otf` 에 넣어 뒀어요. 빌드할 때 내려받지 않아서 사이트 주소가 바뀌어도 빌드할 수 있어요.
+
+새 판이 나왔는지는 다시 받은 파일과 해시를 견줘 보면 알 수 있어요. 다르면 받은 파일을 같은 이름으로 바꿔 넣고,
+받은 주소와 글꼴 정보의 버전을 커밋 메시지에 적어 커밋하세요.
+
+```sh
+curl -fsSL https://ridicorp.com/wp-content/themes/ridicorp/css/font/RIDIBatang.otf | sha256sum   # 다시 받은 파일
+sha256sum sources/RIDIBatang.otf                                                                 # 넣어 둔 파일
+python3 -c 'from fontTools.ttLib import TTFont; print(TTFont("sources/RIDIBatang.otf")["name"].getDebugName(5))'   # 버전
+```
+
+글꼴 정보의 저작권 줄이 바뀌었으면 `LICENSE` 의 RIDIBatang 줄도 같이 고쳐요. 파일이 바뀌면 빌드 기록의 해시도
+바뀌어서, 예전 파일로 만든 `fonts/` 로는 회귀 검사가 실패하고 `package.sh` 가 멈춰요. `./build.sh` 로 다시 빌드해
+회귀 검사를 돌리고, 어떤 글자가 달라졌는지 확인하세요. 웹 페이지나 TrueType 판처럼 CFF 외곽선 OpenType 이 아닌
+파일을 넣으면 `build.sh` 가 베이스 글꼴을 받기 전에 멈춰요. 예전 `build.sh` 가 받아 둔 `build/RIDIBatang.otf` 는
+더 쓰지 않으니 지워도 돼요.
 
 베이스 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
 다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `NERD_PINNED_SHA256` 을
