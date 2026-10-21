@@ -21,6 +21,20 @@ from jetbatang import metadata, release
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def small_font():
+    """.notdef 하나와 이름표만 있는 TrueType 글꼴."""
+    builder = FontBuilder(1000, isTTF=True)
+    builder.setupGlyphOrder([".notdef"])
+    builder.setupCharacterMap({})
+    builder.setupGlyf({".notdef": TTGlyphPen(None).glyph()})
+    builder.setupHorizontalMetrics({".notdef": (600, 0)})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": "fixture", "styleName": "Regular"})
+    builder.setupOS2()
+    builder.setupPost()
+    return builder
+
+
 class BuildSelectionTest(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="jetbatang selection ")
@@ -199,6 +213,22 @@ class BuildSelectionTest(unittest.TestCase):
         self.assertFalse((self.root / "download-attempted").exists())
         self.assertFalse((self.root / "build" / "preview-fonts").exists())
 
+    def test_donor_other_than_a_cff_font_is_refused_before_downloads(self):
+        # 새 판을 받아 바꿔 넣다 웹 페이지나 TrueType 판이 들어가면, 베이스를 받은 뒤 열여섯 종이 모두 같은
+        # 오류로 실패하거나 외곽선 방향이 뒤집힌 채 나온다. outlines.outline 은 CFF 외곽선을 가정한다.
+        for case in ("웹 페이지", "TrueType"):
+            with self.subTest(case=case):
+                donor = self.root / release.DONOR
+                if case == "웹 페이지":
+                    donor.write_bytes(b"<!DOCTYPE html><title>Just a moment...</title>")
+                else:
+                    small_font().save(donor)
+                result = self.build("Regular")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(release.DONOR, result.stdout + result.stderr)
+                self.assertFalse((self.root / "download-attempted").exists())
+                self.assertFalse((self.root / "build" / "preview-fonts").exists())
+
     def test_partial_external_regressions_do_not_require_a_full_manifest(self):
         self.assert_success(self.build("Thin"))
         result = self.regression("test_build.ReleaseTest.test_fonts_were_built_from_current_sources",
@@ -240,15 +270,7 @@ class BuildSelectionTest(unittest.TestCase):
         target = self.root / "selected font output"
         target.mkdir()
         for suffix, style in (("Thin", "Thin"), ("ThinItalic", "Thin Italic")):
-            builder = FontBuilder(1000, isTTF=True)
-            builder.setupGlyphOrder([".notdef"])
-            builder.setupCharacterMap({})
-            builder.setupGlyf({".notdef": TTGlyphPen(None).glyph()})
-            builder.setupHorizontalMetrics({".notdef": (600, 0)})
-            builder.setupHorizontalHeader(ascent=800, descent=-200)
-            builder.setupNameTable({"familyName": "fixture", "styleName": "Regular"})
-            builder.setupOS2()
-            builder.setupPost()
+            builder = small_font()
             metadata.set_names(builder.font, builder.font, "JetBatang NF", style, "1.7.0")
             builder.save(target / f"JetBatangNF-{suffix}.ttf")
         names = ("test_build.NameTest.test_names_follow_the_weight_table",

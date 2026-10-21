@@ -73,9 +73,14 @@ except ValueError as exc:
     sys.exit(str(exc))')
 export SOURCE_DATE_EPOCH
 
-# 코드 해시와 라이브러리 판은 코드에서 무엇이든 읽기 전에 잡아 둔다. 아래 VARIANTS 처럼 여기서 읽어 둔 값도
-# 글꼴을 바꾸므로, 그 뒤에 코드가 바뀌면 끝날 때 견주어 기록하지 않는다.
-started=$(python3 -c 'import json; from jetbatang.release import snapshot; print(json.dumps(snapshot(".")))')
+# 코드·원본 해시와 라이브러리 판은 코드에서 무엇이든 읽기 전에 잡아 둔다. 아래 VARIANTS 처럼 여기서 읽어 둔 값도
+# 글꼴을 바꾸므로, 그 뒤에 코드나 원본이 바뀌면 끝날 때 견주어 기록하지 않는다.
+started=$(python3 -c 'import json, sys
+from jetbatang.release import snapshot
+try:
+    print(json.dumps(snapshot(".")))
+except OSError as exc:
+    sys.exit(f"빌드에 쓰는 파일을 읽을 수 없어요: {exc}")')
 
 # 파일 접미사 : 타이포그래픽 스타일 : 한글 굵기 증가량. 목록과 값은 jetbatang/release.py 의 VARIANTS 에 있다.
 variants=$(python3 -c 'from jetbatang.release import VARIANTS
@@ -83,8 +88,18 @@ for variant in VARIANTS:
     print(*variant, sep=":")')
 VARIANTS=()
 while IFS= read -r variant; do VARIANTS+=("$variant"); done <<< "$variants"
-# RIDIBatang 은 내려받지 않고 저장소에 둔 원본을 쓴다. 이 파일도 위에서 잡은 코드 해시에 들어 있다.
+# RIDIBatang 은 내려받지 않고 저장소에 둔 원본을 쓴다. 이 파일도 위에서 잡은 해시에 들어 있다.
 DONOR=$(python3 -c 'from jetbatang.release import DONOR; print(DONOR)')
+# 새 판으로 바꿔 넣다 웹 페이지나 TrueType 판이 들어가면, 베이스 글꼴을 받은 뒤 열여섯 종이 모두 같은 오류로
+# 실패하거나 외곽선 방향이 뒤집힌 채 나온다. jetbatang/outlines.py 가 CFF 외곽선을 가정하므로 받기 전에 본다.
+python3 -c 'import sys
+from fontTools.ttLib import TTFont, TTLibError
+try:
+    cff = "CFF " in TTFont(sys.argv[1], lazy=True)
+except (OSError, TTLibError) as exc:
+    sys.exit(f"{sys.argv[1]} 를 글꼴로 읽을 수 없어요: {exc}")
+if not cff:
+    sys.exit(f"{sys.argv[1]} 가 CFF 외곽선 OpenType 이 아니에요. RIDIBatang 공식 OTF 를 넣으세요")' "$DONOR"
 
 # 모르는 접미사는 재료나 출력 파일을 건드리기 전에 거절한다.
 for suffix in "$@"; do
