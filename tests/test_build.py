@@ -638,7 +638,6 @@ class KoreanSymbolTest(unittest.TestCase):
                     self.assertLessEqual(x1 - x0, r1 - r0 + 2)
                     self.assertAlmostEqual((x0 + x1) / 2, 300, delta=2)
 
-    @unittest.skipUnless(DONOR.exists(), "build/RIDIBatang.otf 가 없어요. ./build.sh 를 먼저 돌리세요")
     def test_one_cell_symbols_keep_their_counters_in_every_weight(self):
         # 1칸 기호는 base ○ 크기로 0.6 배쯤 줄여 넣는다. 줄인 뒤에 한글과 같은 만큼 굵기를 불리면
         # ExtraBold 에서 ⑧ ⓐ 의 속공간이 막히고 ⓟ ⑫ 의 글자가 원에 붙는다. 굵기를 바꾸기 전 글자와 덩어리·
@@ -860,12 +859,6 @@ class ReleaseTest(unittest.TestCase):
             info["fonts"].pop(release.font_files()[0])
             path.write_text(json.dumps(info))
 
-        def replace_donor(root):
-            # RIDIBatang 새 판은 이 파일만 바꿔 넣는다. 예전 원본으로 만든 글꼴이 그대로 묶이면 안 된다.
-            path = root / DONOR.relative_to(ROOT)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b"RIDIBatang new release")
-
         cases = {
             "빌드한 뒤 코드를 고침": edit_code,
             "빌드한 뒤 글꼴이 바뀜": lambda root: (root / "fonts" / release.font_files()[3]).write_bytes(b"x"),
@@ -877,7 +870,7 @@ class ReleaseTest(unittest.TestCase):
             "기록의 값 형식이 틀림": lambda root: write_manifest(
                 root, '{"version": "1.6.0", "sources": "x", "libraries": {}, "fonts": []}'),
             "기록의 굵기 목록이 모자람": drop_one_font,
-            "빌드한 뒤 RIDIBatang 원본을 바꿈": replace_donor,
+            "빌드한 뒤 RIDIBatang 원본을 바꿈": lambda root: (root / release.DONOR).write_bytes(b"RIDIBatang new release"),
         }
         for case, spoil in cases.items():
             with self.subTest(case=case):

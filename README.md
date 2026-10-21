@@ -267,14 +267,14 @@ python3 -c 'from fontTools.ttLib import TTFont; print(TTFont("sources/RIDIBatang
 더 쓰지 않으니 지워도 돼요.
 
 베이스 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
-다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `NERD_PINNED_SHA256` 을
-고치세요. 고치면 풀어 둔 베이스 글꼴도 새 zip 에서 다시 풀어요. 새 판으로 올려 릴리스하려면 `build.sh` 의
+다르면 빌드하지 않고 멈춰요. 받은 zip 이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `NERD_PINNED_SHA256` 을
+고치세요. 고치면 풀어 둔 베이스 글꼴도 새 zip 에서 다시 풀어요. Nerd Fonts 새 판으로 올려 릴리스하려면 `build.sh` 의
 `NERD_VERSION` 기본값과 `NERD_PINNED`, `NERD_PINNED_SHA256` 을 함께 고쳐요. 해시는 그 릴리스의 `SHA-256.txt` 에 있어요.
 `NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의 `SHA-256.txt` 로 확인하고, 판을 바꾸면
 베이스 글꼴도 새로 받아요. 예전 `build.sh` 로 받아 둔 `build/` 에서는 처음 한 번 Nerd Font 를 다시 받거나 다시 풀어요.
 
 `VERSION` 은 글꼴 정보에 찍히는 버전이라 꼭 넘겨야 해요. 릴리스 태그(`v1.8.0`)와 같은 값을 쓰세요.
-빠졌거나 `X.Y.Z` 꼴이 아니면 원본을 내려받기 전에 멈춰요. 기본값에 기대어 이전 버전으로 빌드하는
+빠졌거나 `X.Y.Z` 꼴이 아니면 베이스 글꼴을 내려받기 전에 멈춰요. 기본값에 기대어 이전 버전으로 빌드하는
 일을 막으려고 매번 릴리스 버전을 직접 지정하게 했어요. 이전 값을 다시 넘기는 것까지 막지는 못해요.
 글꼴 내부 버전값의 표현 범위 때문에 `Y`·`Z` 는 0~99, 버전의 상한은 `327.67.99` 예요.
 
@@ -300,7 +300,7 @@ JETBATANG_FONTS="build/preview fonts" python3 -m unittest discover tests
 만들었다면 `OUT_DIR="그 폴더" ./package.sh` 로 묶을 수 있어요.
 
 빌드 값을 바꿀 때도 `VERSION` 은 같이 넘겨요. `SCALE`·`YSHIFT`·`EMBOLDEN_SCALE` 이 숫자가 아니거나 `JOBS` 가
-0 이상의 정수가 아니면 원본을 내려받기 전에 멈춰요. 굵기 목록과 굵기마다의 한글 굵기 증가량은
+0 이상의 정수가 아니면 베이스 글꼴을 내려받기 전에 멈춰요. 굵기 목록과 굵기마다의 한글 굵기 증가량은
 `jetbatang/release.py` 의 `VARIANTS` 에 있어요. 릴리스는 기본값으로 만들어요. 아래처럼 기본값과 다른 값으로
 빌드하면 그 값이 빌드 기록에 남고, `package.sh` 가 묶을 때 경고해요.
 
@@ -323,8 +323,8 @@ VERSION=1.8.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./
 열여섯 종이 모두 만들어지면 `build.sh` 가 어느 코드(`build.py`·`build.sh`·`requirements.txt`·`jetbatang/*.py`)와
 RIDIBatang 원본(`sources/RIDIBatang.otf`), 어느 판의 라이브러리, 어느 기준 시각(`source_date_epoch`)으로 만든 어느
 파일인지 `fonts/build-info.json` 에 적어요.
-`OUT_DIR` 를 지정했다면 그 폴더에 남겨요. 코드는 빌드를 시작할 때 잡아 두고,
-빌드하는 동안 코드가 바뀌었으면 기록하지 않아요. 회귀 검사는 이 기록으로 `fonts/` 가 지금 코드로 끝까지 만든
+`OUT_DIR` 를 지정했다면 그 폴더에 남겨요. 코드와 원본은 빌드를 시작할 때 잡아 두고,
+빌드하는 동안 바뀌었으면 기록하지 않아요. 회귀 검사는 이 기록으로 `fonts/` 가 지금 코드와 원본으로 끝까지 만든
 것인지 확인해요. 기록이 없으면(예전 `build.sh` 로 만들었거나 빌드가 중간에 멈췄으면) 이 검사가 실패하니,
 `./build.sh` 를 한 번 다시 돌리세요.
 
@@ -332,8 +332,8 @@ Releases 에 올릴 파일은 `./package.sh` 로 `dist/` 에 만들고, `dist/` 
 `JetBatangNF-all.zip` 에는 글꼴 열여섯 종과 `install-windows.ps1`, `LICENSE` 가 함께 들어가고,
 `JetBatangNF-basic.zip` 은 같은 설치 파일·라이선스와 기본 네 스타일만 담아요. 낱개 `ttf`, `install-windows.ps1`,
 두 ZIP 을 포함해 파일마다 해시를 적은 `SHA256SUMS` 도 따로 나와요.
-`package.sh` 는 `fonts/` 가 `fonts/build-info.json` 과 맞지 않으면 멈춰요. 코드를 고친 뒤 다시 빌드하지
-않았거나, 빌드가 중간에 실패했거나, 빌드한 뒤 글꼴이 바뀐 경우예요. 그때는 `./build.sh` 를 다시 돌리세요.
+`package.sh` 는 `fonts/` 가 `fonts/build-info.json` 과 맞지 않으면 멈춰요. 코드나 `sources/RIDIBatang.otf` 를 바꾼 뒤
+다시 빌드하지 않았거나, 빌드가 중간에 실패했거나, 빌드한 뒤 `fonts/` 의 글꼴이 바뀐 경우예요. 그때는 `./build.sh` 를 다시 돌리세요.
 RIDIBatang 글자를 하나라도 TrueType 외곽선으로 옮기지 못하면 그 굵기의 빌드가 실패해서 기록이 남지 않아요.
 
 이 과정은 `release.sh` 가 한 번에 해요. `README.md` 와 `build.sh` 의 예시 버전을 올려 커밋하고 `main` 에 올린 뒤

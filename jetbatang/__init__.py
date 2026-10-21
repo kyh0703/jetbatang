@@ -9,5 +9,5 @@
     nfd       NFD 로 나뉜 한글 자모·가나를 완성형 글리프로 조합하기
     metadata  이름 테이블, 판 번호, OS/2
     merge     위 단계를 이어 base 에 donor 를 합치는 흐름
-    release   굵기 목록과 build.sh 가 남기는 빌드 기록. 표준 라이브러리만 쓴다
+    release   굵기 목록, 저장소에 둔 RIDIBatang 경로, build.sh 가 남기는 빌드 기록. 표준 라이브러리만 쓴다
 """

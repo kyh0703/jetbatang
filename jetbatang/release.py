@@ -1,4 +1,4 @@
-"""굵기 목록과, build.sh 가 fonts/ 에 남기는 빌드 기록. 표준 라이브러리만 쓴다."""
+"""굵기 목록, 저장소에 둔 RIDIBatang 경로, build.sh 가 fonts/ 에 남기는 빌드 기록. 표준 라이브러리만 쓴다."""
 import hashlib
 import importlib.metadata
 import json
@@ -176,10 +176,10 @@ def _font_directory(root, fonts_dir):
 
 def write_manifest(root, version, started, custom=(), *, fonts_dir=None):
     """열여섯 종을 다 만든 뒤 기록을 남긴다. started 는 빌드를 시작할 때 잡은 snapshot 이고, custom 은
-    기본값과 다르게 준 빌드 값("SCALE=1.05" 꼴)이다. 그사이에 코드가 바뀌었으면 어느 코드로 만든 글꼴인지
+    기본값과 다르게 준 빌드 값("SCALE=1.05" 꼴)이다. 그사이에 코드나 원본이 바뀌었으면 무엇으로 만든 글꼴인지
     알 수 없어서, 기록하지 않고 ValueError."""
     if sources_digest(root) != started["sources"]:
-        raise ValueError("빌드하는 동안 코드가 바뀌었어요. ./build.sh 로 다시 빌드하세요")
+        raise ValueError("빌드하는 동안 코드나 RIDIBatang 원본이 바뀌었어요. ./build.sh 로 다시 빌드하세요")
     fonts = _font_directory(root, fonts_dir)
     info = {"version": version, "sources": started["sources"], "libraries": started["libraries"],
             "source_date_epoch": started["source_date_epoch"],

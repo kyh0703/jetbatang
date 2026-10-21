@@ -43,14 +43,14 @@ python3 -c "import fontTools, pathops" 2>/dev/null || { echo "pip install -r req
 python3 -c 'from jetbatang.release import library_warnings
 for line in library_warnings("."):
     print(line)' >&2
-# 원본을 내려받기 전에 버전부터 확인한다. 규칙은 build.py 가 쓰는 jetbatang/metadata.py 의 함수 하나로 본다.
+# 베이스 글꼴을 내려받기 전에 버전부터 확인한다. 규칙은 build.py 가 쓰는 jetbatang/metadata.py 의 함수 하나로 본다.
 python3 -c 'import sys
 from jetbatang.metadata import font_revision
 try:
     font_revision(sys.argv[1])
 except ValueError as exc:
     sys.exit(str(exc))' "$VERSION"
-# 빌드 값도 원본을 내려받기 전에 본다. 틀린 값이면 열여섯 종이 모두 같은 오류로 실패한다.
+# 빌드 값도 베이스 글꼴을 내려받기 전에 본다. 틀린 값이면 열여섯 종이 모두 같은 오류로 실패한다.
 python3 -c 'import math, sys
 for name, value in zip(sys.argv[1::2], sys.argv[2::2]):
     try:
