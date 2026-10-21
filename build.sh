@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 재료를 내려받아 JetBatang NF 를 만든다. 접미사를 고르면 build/preview-fonts/ 에만 만든다.
+# 베이스 글꼴을 내려받아 sources/ 의 RIDIBatang 과 합쳐 JetBatang NF 를 만든다. 접미사를 고르면
+# build/preview-fonts/ 에만 만든다.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -23,11 +24,8 @@ for setting in "${DEFAULTS[@]}"; do
     custom+=("$name=${!name}")
   fi
 done
-RIDI_URL="https://ridicorp.com/wp-content/themes/ridicorp/css/font/RIDIBatang.otf"
-# 재료의 SHA-256. 원본이 바뀌면 같은 코드로도 다른 글꼴이 나오니, 받은 파일이 이 값과 다르면
-# 멈춘다. 새 원본을 쓰려면 바뀐 내용을 확인하고 이 값을 고친다.
-RIDI_SHA256="f13a49c0815d254ac15e392953a0b056613dec08ceb378e54eeed14c4fda9a54"
-# 기본 Nerd Font 판은 해시를 고정한다. 다른 판이나 가족을 고르면 그 릴리스의 SHA-256.txt 로 본다.
+# 기본 Nerd Font 판의 zip 해시. 받은 파일이 이 값과 다르면 멈춘다. 새 판으로 올릴 때는 NERD_VERSION 기본값,
+# NERD_PINNED, 이 해시를 함께 고친다. 다른 판이나 가족을 고르면 그 릴리스의 SHA-256.txt 로 본다.
 NERD_PINNED="v3.5.1/JetBrainsMono.zip"
 NERD_PINNED_SHA256="fab782a66f7d3019da64f6572db9fc5d3a4bcb19f9fa13e2d8a62e3693d6396e"
 # 글꼴 정보에 찍히는 릴리스 버전. 릴리스 태그(vX.Y.Z)와 같은 값을 매번 넘긴다. 기본값을 두면
@@ -85,6 +83,8 @@ for variant in VARIANTS:
     print(*variant, sep=":")')
 VARIANTS=()
 while IFS= read -r variant; do VARIANTS+=("$variant"); done <<< "$variants"
+# RIDIBatang 은 내려받지 않고 저장소에 둔 원본을 쓴다. 이 파일도 위에서 잡은 코드 해시에 들어 있다.
+DONOR=$(python3 -c 'from jetbatang.release import DONOR; print(DONOR)')
 
 # 모르는 접미사는 재료나 출력 파일을 건드리기 전에 거절한다.
 for suffix in "$@"; do
@@ -145,8 +145,6 @@ fetch() {
   fi
   mv "$dest.part" "$dest"
 }
-
-fetch RIDIBatang "$RIDI_URL" build/RIDIBatang.otf "$RIDI_SHA256"
 
 # 풀어 둔 베이스 글꼴이 어느 판의 어느 zip(SHA-256) 에서 나왔는지 build/$BASE_PREFIX.source 에 적는다.
 # 파일 이름에는 판이 없어서, 이 기록 없이는 NERD_VERSION 을 바꿔도 예전 베이스로 빌드된다. 기본 판은
@@ -209,7 +207,7 @@ build_one() {
   # 값은 --옵션=값 꼴로 넘긴다. 띄어 넘기면 argparse 가 -1e1 같은 음수를 옵션으로 읽는다.
   if log=$(python3 build.py \
       --base="build/$BASE_PREFIX-$suffix.ttf" \
-      --donor=build/RIDIBatang.otf \
+      --donor="$DONOR" \
       --out="$OUT_DIR/JetBatangNF-$suffix.ttf" \
       --family="$FAMILY" --style="$style" --font-version="$VERSION" \
       --scale="$SCALE" --yshift="$YSHIFT" "${args[@]}" 2>&1); then
@@ -220,7 +218,7 @@ build_one() {
   fi
 }
 export -f build_one
-export BASE_PREFIX FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE OUT_DIR
+export BASE_PREFIX DONOR FAMILY VERSION SCALE YSHIFT EMBOLDEN_SCALE OUT_DIR
 
 # 빌드가 도중에 멈추면 예전 기록이 새 파일과 섞여 남지 않게 먼저 지운다.
 python3 -c 'import pathlib, sys; from jetbatang.release import MANIFEST

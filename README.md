@@ -35,7 +35,7 @@ if (상태 === "완료") return "성공";
 
 [Releases](../../releases) 에서 기본 네 스타일(Regular·Bold·Italic·BoldItalic)은 `JetBatangNF-basic.zip` 으로 받으세요.
 다른 굵기도 쓰려면 열여섯 종을 담은 `JetBatangNF-all.zip` 이나 원하는 낱개 `ttf` 를 받으면 돼요.
-설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 글꼴 파일이 없어요.
+설치한 뒤 터미널에서 글꼴 이름을 `JetBatang NF` 로 지정하면 돼요. 저장소에는 설치할 글꼴 파일이 없어요.
 설치한 판은 글꼴 정보의 버전(`Version 1.8.0`)이 릴리스 태그와 같은지로 확인하세요. v1.4.0 이하는 버전이 비어 있어요.
 릴리스에 `SHA256SUMS` 가 있으면 받은 파일이 있는 폴더에서 파일이 온전한지 확인할 수 있어요. 파일마다 `OK` 가
 나오면 돼요.
@@ -247,9 +247,15 @@ VERSION=1.8.0 ./build.sh
 ZIP 은 빌드 기록에 남긴 시각을 쓰고, 파일의 수정 시각·권한·나열 순서·시간대는 바이트에 영향을 주지 않게 해요.
 ZIP 이 표현할 수 없는 시각은 UTC 1980~2107 년 범위에 맞추고, 초는 ZIP 규칙에 따라 2초 단위로 저장해요.
 
-원본 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
-다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `RIDI_SHA256` 이나
-`NERD_PINNED_SHA256` 을 고치세요. `NERD_PINNED_SHA256` 을 고치면 풀어 둔 베이스 글꼴도 새 zip 에서 다시 풀어요.
+RIDIBatang 은 [리디바탕 페이지](https://ridicorp.com/ridibatang/)에서 받은 파일을 고치지 않고 `sources/RIDIBatang.otf` 에
+넣어 뒀어요. 빌드할 때 내려받지 않아서 사이트 주소가 바뀌어도 빌드할 수 있어요. 새 판이 나오면 이 파일만 바꿔
+커밋하세요. 파일이 바뀌면 빌드 기록의 코드 해시도 바뀌어서, 예전 파일로 만든 `fonts/` 는 회귀 검사와 `package.sh` 가
+받지 않아요. 예전 `build.sh` 가 받아 둔 `build/RIDIBatang.otf` 는 더 쓰지 않으니 지워도 돼요.
+
+베이스 글꼴은 스크립트가 `build/` 에 내려받고 SHA-256 으로 확인해요. 받다가 실패하거나 해시가 고정한 값과
+다르면 빌드하지 않고 멈춰요. 원본이 바뀌어서 멈췄다면 바뀐 내용을 확인한 뒤 `build.sh` 의 `NERD_PINNED_SHA256` 을
+고치세요. 고치면 풀어 둔 베이스 글꼴도 새 zip 에서 다시 풀어요. 새 판으로 올려 릴리스하려면 `build.sh` 의
+`NERD_VERSION` 기본값과 `NERD_PINNED`, `NERD_PINNED_SHA256` 을 함께 고쳐요. 해시는 그 릴리스의 `SHA-256.txt` 에 있어요.
 `NERD_VERSION`·`NERD_FAMILY` 로 다른 Nerd Fonts 판을 고르면 그 릴리스의 `SHA-256.txt` 로 확인하고, 판을 바꾸면
 베이스 글꼴도 새로 받아요. 예전 `build.sh` 로 받아 둔 `build/` 에서는 처음 한 번 Nerd Font 를 다시 받거나 다시 풀어요.
 
@@ -301,7 +307,8 @@ VERSION=1.8.0 NERD_FAMILY=JetBrainsMono BASE_PREFIX=JetBrainsMonoNerdFontMono ./
 제조사 ID(`OS/2.achVendID`)는 원본 JetBrains의 `JB`를 물려받지 않고, 등록한 제조사 ID가 없다는 뜻의 `NONE`으로 적어요.
 
 열여섯 종이 모두 만들어지면 `build.sh` 가 어느 코드(`build.py`·`build.sh`·`requirements.txt`·`jetbatang/*.py`)와
-어느 판의 라이브러리와 어느 기준 시각(`source_date_epoch`)으로 만든 어느 파일인지 `fonts/build-info.json` 에 적어요.
+RIDIBatang 원본(`sources/RIDIBatang.otf`), 어느 판의 라이브러리, 어느 기준 시각(`source_date_epoch`)으로 만든 어느
+파일인지 `fonts/build-info.json` 에 적어요.
 `OUT_DIR` 를 지정했다면 그 폴더에 남겨요. 코드는 빌드를 시작할 때 잡아 두고,
 빌드하는 동안 코드가 바뀌었으면 기록하지 않아요. 회귀 검사는 이 기록으로 `fonts/` 가 지금 코드로 끝까지 만든
 것인지 확인해요. 기록이 없으면(예전 `build.sh` 로 만들었거나 빌드가 중간에 멈췄으면) 이 검사가 실패하니,
@@ -329,11 +336,12 @@ VERSION=X.Y.Z uv run --no-project --with-requirements requirements.txt ./release
 있거나, 같은 판의 릴리스가 초안까지 포함해 이미 있으면 빌드하기 전에 멈춰요. 기본값과 다른 빌드 값으로 만들었으면
 검사하기 전에 멈춰요. 태그는 검사를 다 통과한 뒤에만 올리니, 중간에 실패하면 고친 커밋으로 다시 돌리면 돼요.
 
-PR 과 `main` 푸시에서는 `.github/workflows/ci.yml` 이 셸 스크립트 문법과 글꼴 없이 도는 검사만 돌려요.
+PR 과 `main` 푸시에서는 `.github/workflows/ci.yml` 이 셸 스크립트 문법과, 빌드한 글꼴 없이 도는 검사만 돌려요.
 
 ## LICENSE
 
-[SIL Open Font License 1.1](LICENSE). 원본 글꼴 두 개 모두 같은 라이선스예요.
+[SIL Open Font License 1.1](LICENSE). 원본 글꼴 두 개 모두 같은 라이선스예요. `sources/RIDIBatang.otf` 는 빌드에 쓰려고
+RIDIBatang 원본을 고치지 않고 넣어 둔 파일로, 같은 라이선스를 따라요.
 
 - **JetBrains Mono** — Copyright 2020 The JetBrains Mono Project Authors
 - **Nerd Fonts** — Ryan L McIntyre and contributors

@@ -47,8 +47,12 @@ BASIC_FONTS = tuple(f"JetBatangNF-{suffix}.ttf" for suffix in ("Regular", "Bold"
 ZIP_MIN_EPOCH = 315532800
 ZIP_MAX_EPOCH = 4354819198
 
-# 같은 재료로도 이 파일들이 바뀌면 글꼴이 달라진다. 재료의 해시는 build.sh 에 있다.
-SOURCES = ("build.py", "build.sh", "requirements.txt", "jetbatang/*.py")
+# RIDIBatang 은 공식 배포 파일을 고치지 않고 저장소에 둔다. 내려받지 않아서 사이트 주소가 바뀌어도 빌드한다.
+# 새 판이 나오면 이 파일만 바꿔 넣는다.
+DONOR = "sources/RIDIBatang.otf"
+# 이 파일들이 바뀌면 같은 베이스로도 글꼴이 달라진다. DONOR 가 들어 있어서 예전 RIDIBatang 으로 만든 fonts/ 는
+# 기록과 맞지 않는다. 베이스 글꼴 zip 의 해시는 build.sh 에 있다.
+SOURCES = ("build.py", "build.sh", "requirements.txt", "jetbatang/*.py", DONOR)
 # 라이브러리 판을 고정한 파일. name==version 줄만 읽는다.
 REQUIREMENTS = "requirements.txt"
 

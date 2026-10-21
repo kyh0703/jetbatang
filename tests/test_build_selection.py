@@ -36,17 +36,15 @@ class BuildSelectionTest(unittest.TestCase):
 
         fixtures = self.root / "fixtures"
         fixtures.mkdir()
-        donor = fixtures / "RIDIBatang.otf"
-        donor.write_bytes(b"small donor fixture")
         archive = fixtures / "JetBrainsMono.zip"
         with zipfile.ZipFile(archive, "w") as bundle:
             for suffix, _, _ in release.VARIANTS:
                 bundle.writestr(f"JetBrainsMonoNerdFontMono-{suffix}.ttf", suffix.encode())
-        # 고정한 실제 다운로드 대신 작은 고정 재료를 쓴다. 해시 확인과 unzip 은 실제 구현 그대로 돈다.
+        # 베이스 zip 의 실제 다운로드 대신 작은 고정 재료를 쓴다. 해시 확인과 unzip 은 실제 구현 그대로 돈다.
+        # RIDIBatang 은 위에서 SOURCES 로 복사한 저장소 원본을 그대로 쓴다.
         script = (self.root / "build.sh").read_text()
-        for name, path in (("RIDI_SHA256", donor), ("NERD_PINNED_SHA256", archive)):
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            script = re.sub(rf'(?m)^{name}="[0-9a-f]+"$', f'{name}="{digest}"', script)
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        script = re.sub(r'(?m)^NERD_PINNED_SHA256="[0-9a-f]+"$', f'NERD_PINNED_SHA256="{digest}"', script)
         (self.root / "build.sh").write_text(script)
 
         commands = self.root / "bin"

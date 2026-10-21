@@ -1,4 +1,4 @@
-"""빌드 회귀 검사. build/ 의 원본 글꼴과 빌드 결과가 있어야 돈다(./build.sh).
+"""빌드 회귀 검사. 빌드 결과와 build/ 의 베이스 글꼴을 재는 검사는 ./build.sh 를 돌린 뒤에 돈다.
 
     python3 -m unittest discover tests
     JETBATANG_FONTS=build/preview-fonts python3 -m unittest discover tests
@@ -24,7 +24,7 @@ from fontTools.ttLib import TTFont
 from jetbatang import charset, kana, layout, merge, metadata, outlines, release, scanline, weight
 
 ROOT = Path(__file__).resolve().parent.parent
-DONOR = ROOT / "build" / "RIDIBatang.otf"
+DONOR = ROOT / release.DONOR
 FONTS = Path(os.environ.get("JETBATANG_FONTS", ROOT / "fonts"))
 FONTS = (ROOT / FONTS).resolve()
 REGULAR = FONTS / "JetBatangNF-Regular.ttf"
@@ -339,7 +339,6 @@ class ScanlineTest(unittest.TestCase):
         self.assertFalse(scanline.same_structure(before, swapped))
 
 
-@unittest.skipUnless(DONOR.exists(), "build/RIDIBatang.otf 가 없어요. ./build.sh 를 먼저 돌리세요")
 class DonorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -372,7 +371,7 @@ class DonorTest(unittest.TestCase):
                 self.assertLess(scanline.mismatch(truth, got), scanline.painted(truth) * 5e-3)
 
 
-@unittest.skipUnless(DONOR.exists() and BUILT, f"build/RIDIBatang.otf 나 {FONTS} 가 없어요. ./build.sh 를 먼저 돌리세요")
+@unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class CoverageTest(unittest.TestCase):
     def test_every_face_maps_every_donor_character_at_its_cell_width(self):
         # 빠진 글자는 터미널이 다른 글꼴로 그리고, 폭이 2칸이 아니면 격자가 어긋난다. 결합 탁점·반탁점은
@@ -861,6 +860,12 @@ class ReleaseTest(unittest.TestCase):
             info["fonts"].pop(release.font_files()[0])
             path.write_text(json.dumps(info))
 
+        def replace_donor(root):
+            # RIDIBatang 새 판은 이 파일만 바꿔 넣는다. 예전 원본으로 만든 글꼴이 그대로 묶이면 안 된다.
+            path = root / DONOR.relative_to(ROOT)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"RIDIBatang new release")
+
         cases = {
             "빌드한 뒤 코드를 고침": edit_code,
             "빌드한 뒤 글꼴이 바뀜": lambda root: (root / "fonts" / release.font_files()[3]).write_bytes(b"x"),
@@ -872,6 +877,7 @@ class ReleaseTest(unittest.TestCase):
             "기록의 값 형식이 틀림": lambda root: write_manifest(
                 root, '{"version": "1.6.0", "sources": "x", "libraries": {}, "fonts": []}'),
             "기록의 굵기 목록이 모자람": drop_one_font,
+            "빌드한 뒤 RIDIBatang 원본을 바꿈": replace_donor,
         }
         for case, spoil in cases.items():
             with self.subTest(case=case):
