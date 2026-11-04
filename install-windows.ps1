@@ -389,9 +389,11 @@ function Copy-JetBatangSources {
 function Set-JetBatangState {
     param([string]$Scope, [array]$Previous, [array]$Desired)
     $desiredPaths = @($Desired.Path | Select-Object -Unique)
+    # 등록하기 전에는 WPF 로 열어 보지 않는다. WPF 는 %windir%\Fonts 의 파일을 레지스트리 Fonts 키에 오른 뒤에야
+    # 연다. 그 전에는 설치된 글꼴과 같은 바이트의 복사본도 NullReferenceException 으로 실패한다. 새 파일은
+    # 복사하기 전에 원본으로, 등록한 뒤에 설치 경로로 검사하고, 실패하면 Invoke-JetBatangTransaction 이 되돌린다.
     foreach ($path in $desiredPaths) {
         if (-not [IO.File]::Exists($path)) { continue } # Restore an originally missing registration faithfully.
-        Test-JetBatangFontFile $path
         if ((Add-JetBatangFontResource $path) -eq 0) { throw "AddFontResourceW 실패: $path" }
     }
     foreach ($entry in $Desired) {

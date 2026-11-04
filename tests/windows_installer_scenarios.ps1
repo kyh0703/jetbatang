@@ -20,7 +20,9 @@ foreach ($definition in $ast.FindAll({ param($node)
 }
 
 # These are the only system boundaries replaced. File IO, SHA256, WPF validation,
-# installer decisions, backup journals and restoration execute the real code.
+# installer decisions, backup journals and restoration execute the real code. WPF is
+# real too, but the temporary all-users folder is not %windir%\Fonts, so its one
+# system-folder rule is added in front of it below.
 $script:Registry = @{ CurrentUser = @{}; AllUsers = @{} }
 $script:Elevated = $true
 $script:Broadcasts = 0
@@ -57,6 +59,21 @@ function Remove-JetBatangFontResource {
     $script:Resources.Remove($Path)
 }
 function Send-JetBatangFontChange { $script:Broadcasts++ }
+# WPF opens a file in %windir%\Fonts only after the Fonts registry key lists it. Before that,
+# even a byte-identical copy of an installed face fails with a NullReferenceException in
+# FontFaceLayoutInfo, and AddFontResource alone does not help (observed on Windows 11 while
+# updating 1.8.0 to 1.9.0). Per-user font folders have no such rule.
+$script:OpenWithWpf = ${function:Test-JetBatangFontFile}
+function Test-JetBatangFontFile {
+    param([string]$Path)
+    if ([IO.Path]::GetDirectoryName($Path) -eq $ctx.AllUsersFontDir) {
+        $registered = @($script:Registry.AllUsers.Values | ForEach-Object {
+            if ([IO.Path]::IsPathRooted($_.Value)) { $_.Value } else { Join-Path $ctx.AllUsersFontDir $_.Value }
+        })
+        if ($Path -notin $registered) { throw "WPF cannot open an unregistered file in the system font folder: $Path" }
+    }
+    & $script:OpenWithWpf $Path
+}
 function Assert-True {
     param([bool]$Condition, [string]$Message)
     if (-not $Condition) { throw "Assertion failed: $Message" }
