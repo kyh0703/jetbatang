@@ -5,7 +5,7 @@ from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.recordingPen import RecordingPen, replayRecording
 from fontTools.pens.transformPen import TransformPen
 
-from .outlines import bounds
+from .outlines import bounds, split_contours
 
 
 # RIDIBatang 에 없는 탁음 가나 → 탁점을 얹을 청음 가나. ゔ ヷ ヸ ヹ ヺ
@@ -22,13 +22,7 @@ def kana_contours(dglyph):
     """가나 외곽선을 나눠 몸통과 탁점·반탁점 경로를 골라낼 수 있게 한다."""
     rec = RecordingPen()
     dglyph.draw(rec)
-    contours, cur = [], []
-    for op, args in rec.value:
-        cur.append((op, args))
-        if op in ("closePath", "endPath"):
-            contours.append(cur)
-            cur = []
-    return contours
+    return split_contours(rec.value)
 
 
 class KanaMark:

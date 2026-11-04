@@ -218,6 +218,26 @@ def polygon_glyph(*contours):
     return pen.glyph()
 
 
+class OutlineTest(unittest.TestCase):
+    def test_saved_glyph_drops_specks_left_by_boolean_ops(self):
+        # 경계 연산은 넓이가 거의 0 인 부스러기 외곽선을 남기고, 좌표를 정수로 반올림하면 넓이가 0 이 되기도 한다.
+        # 회색조에서는 보이지 않지만, 흑백 렌더링에서는 dropout control 이 이것을 픽셀로 칠한다(Thin 의 퉖 29px).
+        # 속공간은 방향이 반대라서 넓이의 부호만 보고 버리면 함께 사라진다.
+        path = pathops.Path()
+        pen = path.getPen()
+        for points in ([(0, 0), (0, 300), (300, 300), (300, 0)],
+                       [(100, 100), (200, 100), (200, 200), (100, 200)],
+                       [(400, 0), (410, 0.3), (420, 0)],           # 반올림하면 넓이 0
+                       [(500, 0), (500, 1), (501, 0)]):            # 넓이 0.5
+            pen.moveTo(points[0])
+            for point in points[1:]:
+                pen.lineTo(point)
+            pen.closePath()
+        glyph = outlines.to_glyph(path)
+        self.assertEqual(glyph.numberOfContours, 2)
+        self.assertEqual(weight.ink(outlines.glyph_path(glyph)), 300 * 300 - 100 * 100)
+
+
 class EmboldeningTest(unittest.TestCase):
     def test_emboldening_keeps_strokes_thinner_than_the_shift(self):
         # 사방으로 옮긴 복사본만 합치면 옮기는 거리보다 작은 점은 복사본들 사이가 비어 가운데가 뚫린다.

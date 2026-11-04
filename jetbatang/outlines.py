@@ -1,13 +1,17 @@
 """외곽선을 옮기고 바꾸는 글리프 공통 도구."""
 import pathops
 
+from fontTools.pens.areaPen import AreaPen
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.cu2quPen import Cu2QuPen
+from fontTools.pens.recordingPen import RecordingPen, replayRecording
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib.tables._g_l_y_f import (ARGS_ARE_XY_VALUES,
                                              OVERLAP_COMPOUND, Glyph,
                                              GlyphComponent)
+
+from .scanline import SPECK
 
 
 def make_composite(src, offsets):
@@ -40,10 +44,34 @@ def bounds(glyphs, name, tf=None):
     return pen.bounds
 
 
+def split_contours(recording):
+    """RecordingPen 의 기록을 외곽선 하나씩으로 나눈다."""
+    contours, cur = [], []
+    for op, args in recording:
+        cur.append((op, args))
+        if op in ("closePath", "endPath"):
+            contours.append(cur)
+            cur = []
+    return contours
+
+
 def to_glyph(path):
+    """경계 연산 결과를 TrueType 글리프로 만든다. 칠할 외곽선이 없으면 None.
+
+    경계 연산은 넓이가 거의 0 인 부스러기 외곽선을 남기고, 좌표를 정수로 반올림하면 넓이가 0 이 되기도
+    한다. 회색조에서는 보이지 않지만 흑백 렌더링의 dropout control 이 픽셀로 칠해서, 반올림한 뒤 넓이가
+    SPECK 보다 작은 외곽선은 뺀다."""
     ttpen = TTGlyphPen(None)
     path.draw(ttpen)
-    glyph = ttpen.glyph()
+    rounded = RecordingPen()
+    ttpen.glyph().draw(rounded, None)
+    kept = TTGlyphPen(None)
+    for contour in split_contours(rounded.value):
+        area = AreaPen()
+        replayRecording(contour, area)
+        if abs(area.value) >= SPECK:
+            replayRecording(contour, kept)
+    glyph = kept.glyph()
     return glyph if glyph.numberOfContours else None
 
 
