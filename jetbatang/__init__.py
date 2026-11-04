@@ -2,6 +2,7 @@
 
     charset   어떤 글자를 RIDIBatang 에서 가져오고, 어떤 글자를 base 글리프로 때울지
     kana      RIDIBatang 에 없는 가나를 있는 가나의 외곽선으로 만들기
+    checkmarks  base 에 없는 ✔ ✘ ☑ ☒ 를 같은 판 base 의 ✓ ✗ □ 로 만들기
     layout    가져온 글자를 base 의 1칸·2칸에 놓는 배율과 위치
     weight    한글 획을 불리거나 깎기. 경계 연산과 그 결과를 믿을 수 있는지 보기
     scanline  경계 연산을 거치지 않고 nonzero 규칙으로 직접 칠해 본 정답

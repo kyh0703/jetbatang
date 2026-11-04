@@ -624,6 +624,70 @@ class NarrowSignTest(unittest.TestCase):
 
 
 @unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
+class CheckMarkTest(unittest.TestCase):
+    # ✓ ✗ □ 는 base 에 있지만 ✔ ✘ ☐ ☑ ☒ 는 Nerd Fonts 어느 판에도 없다. 없으면 테스트 러너와 할 일 목록의
+    # 이 기호만 터미널이 다른 글꼴로 그려서, 옆의 ✓ 와 모양도 굵기도 다르다.
+
+    def test_heavy_marks_are_bolder_ticks_in_the_same_place(self):
+        # ✔ ✘ 는 같은 판의 ✓ ✗ 를 굵게 한 글자다. 획이 눈에 띄게 굵어야 ✓ 와 구별되고, 두 갈래가 붙을 만큼
+        # 굵으면 안 된다. 높이 3/4 에서 가로로 자르면 ✓ 는 긴 갈래, ✗ 는 두 갈래를 따로 지나서 첫 토막의 폭이
+        # 획 굵기에 비례한다. 1칸 안에 줄여 넣어서 ExtraBold 는 1.4 배쯤이다. 잉크 자리가 ✓ 와 같아야 한 열에
+        # 섞여도 나란하다.
+        for path in BUILT:
+            font = TTFont(path)
+            cmap, glyphs, hmtx = font.getBestCmap(), font.getGlyphSet(), font["hmtx"]
+            for heavy, light in zip("✔✘", "✓✗"):
+                with self.subTest(font=path.stem, ch=heavy):
+                    self.assertIn(ord(heavy), cmap)
+                    self.assertEqual(hmtx[cmap[ord(heavy)]][0], 600)
+                    box = ink(glyphs, cmap[ord(light)])
+                    for got, want in zip(ink(glyphs, cmap[ord(heavy)]), box):
+                        self.assertAlmostEqual(got, want, delta=3)
+                    cut = box[1] + (box[3] - box[1]) * 0.75
+                    self.assertEqual(len(section(glyphs, cmap[ord(heavy)], cut)),
+                                     len(section(glyphs, cmap[ord(light)], cut)))
+                    ratio = stem(glyphs, cmap[ord(heavy)], 0.75) / stem(glyphs, cmap[ord(light)], 0.75)
+                    self.assertGreater(ratio, 1.35)
+                    self.assertLess(ratio, 2.0)
+
+    def test_ballot_box_is_the_base_square(self):
+        # ☐ 는 □ 와 같은 모양이다. 따로 그리면 ☐ ☑ 를 섞어 쓴 할 일 목록에서 상자 크기가 들쭉날쭉하다.
+        for path in BUILT:
+            cmap = TTFont(path).getBestCmap()
+            with self.subTest(font=path.stem):
+                self.assertEqual(cmap.get(0x2610), cmap[0x25A1])
+
+    def test_checked_boxes_hold_the_mark_apart_inside_the_square(self):
+        # ☑ ☒ 는 ☐ 상자 안에 ✓ ✗ 를 줄여 넣는다. 표시가 상자에 닿으면 작은 크기에서 ■ 처럼 뭉치고, 너무 작으면
+        # ☐ 와 구별되지 않는다. 상자는 ☐ 와 같은 □ 여야 한 목록에서 나란하다.
+        for path in BUILT:
+            font = TTFont(path)
+            cmap, glyphs, hmtx = font.getBestCmap(), font.getGlyphSet(), font["hmtx"]
+            empty = cmap[0x25A1]
+            x0, y0, x1, y1 = ink(glyphs, empty)
+            (_, wall), _ = section(glyphs, empty, (y0 + y1) / 2)
+            wall = wall - x0
+            counter = (x0 + wall, y0 + wall, x1 - wall, y1 - wall)
+            for ch in "☑☒":
+                with self.subTest(font=path.stem, ch=ch):
+                    self.assertIn(ord(ch), cmap)
+                    self.assertEqual(hmtx[cmap[ord(ch)]][0], 600)
+                    for got, want in zip(ink(glyphs, cmap[ord(ch)]), (x0, y0, x1, y1)):
+                        self.assertAlmostEqual(got, want, delta=1)
+                    blobs, holes = shape(glyphs, cmap[ord(ch)])
+                    self.assertEqual((len(blobs), len(holes)), (2, 1))
+                    mark = min(blobs, key=scanline.painted)
+                    top, bottom = max(mark) + 1, min(mark)
+                    left = min(spans[0][0] for spans in mark.values())
+                    right = max(spans[-1][1] for spans in mark.values())
+                    gaps = (left - counter[0], bottom - counter[1], counter[2] - right, counter[3] - top)
+                    self.assertGreaterEqual(min(gaps), wall / 2, gaps)
+                    self.assertGreater(right - left, (counter[2] - counter[0]) / 2)
+                    self.assertAlmostEqual(gaps[0], gaps[2], delta=3)
+                    self.assertAlmostEqual(gaps[1], gaps[3], delta=3)
+
+
+@unittest.skipUnless(BUILT, f"{FONTS} 에 빌드 결과가 없어요. ./build.sh 를 먼저 돌리세요")
 class KoreanSymbolTest(unittest.TestCase):
     def test_draws_every_ks_x_1001_character_itself(self):
         # ※ ① ★ 이 없으면 터미널이 다른 글꼴의 고딕 기호를 섞어 그린다. 폭이 애매한 글자는

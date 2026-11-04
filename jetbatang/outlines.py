@@ -14,17 +14,23 @@ from fontTools.ttLib.tables._g_l_y_f import (ARGS_ARE_XY_VALUES,
 from .scanline import SPECK
 
 
-def make_composite(src, offsets):
-    """src 외곽선을 offsets 만큼씩 옮겨 겹쳐 부르는 composite 글리프."""
+def compose(parts):
+    """[(글리프 이름, (dx, dy))] 를 차례로 부르는 composite 글리프."""
     g = Glyph()
     g.numberOfContours = -1
     g.components = []
-    for ox, oy in offsets:
+    for src, (ox, oy) in parts:
         c = GlyphComponent()
         c.glyphName = src
         c.x, c.y = ox, oy
         c.flags = ARGS_ARE_XY_VALUES
         g.components.append(c)
+    return g
+
+
+def make_composite(src, offsets):
+    """src 외곽선을 offsets 만큼씩 옮겨 겹쳐 부르는 composite 글리프."""
+    g = compose([(src, offset) for offset in offsets])
     if len(offsets) > 1:
         g.components[0].flags |= OVERLAP_COMPOUND   # 겹칠 때만, 첫 component 에만 세운다
     return g

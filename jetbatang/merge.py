@@ -11,6 +11,7 @@ from fontTools.misc.timeTools import timestampSinceEpoch
 from fontTools.ttLib import TTFont
 
 from .charset import ALIASES, BASE_ALIASES, WIDEN, is_wide, ksx1001_symbols
+from .checkmarks import add_check_marks
 from .kana import combining_kana, small_kana, spacing_marks, voiced_kana
 from .layout import Grid, SymbolCell, fit_cell
 from .metadata import set_names, set_os2
@@ -270,6 +271,7 @@ def build_font(options):
     if weight.emboldens:
         merge_overlaps(merge, done.layered)
     add_widened(merge, grid.wide)
+    add_check_marks(merge)
     add_base_aliases(merge)
     add_nfd_jamo(merge, grid.wide)
     # 글리프를 다 넣은 뒤에 cmap 을 건다. 아래 GSUB·GDEF·OS/2 단계는 그 cmap 을 읽는다.
